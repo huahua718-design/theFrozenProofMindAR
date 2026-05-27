@@ -9,15 +9,8 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
-    
-    <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.1.4/dist/mindar-image-aframe.prod.js"></script>
 
     <style>
-        /* 強制隱藏 MindAR 預設的 UI 元素 */
-        .mindar-ui-scanning, .mindar-ui-loading, .mindar-ui-compatibility {
-            display: none !important;
-        }
         html, body {
             background-color: #000 !important;
             margin: 0;
@@ -28,47 +21,15 @@
             -webkit-user-select: none;
             user-select: none;
         }
+        /* 預先寫好 MindAR 隱藏樣式，等腳本載入時會自動生效 */
+        .mindar-ui-scanning, .mindar-ui-loading, .mindar-ui-compatibility {
+            display: none !important;
+        }
     </style>
 </head>
 <body class="bg-black text-white">
 
-    <div id="master-ui" class="hidden fixed inset-0 w-screen h-screen flex flex-col items-center justify-center bg-black z-[5000] cursor-pointer">
-        <div id="qr-container" class="flex flex-col items-center p-6 bg-black">
-            <h1 class="text-zinc-500 text-sm font-mono mb-6 tracking-widest">ROOM: <span id="room-display" class="font-bold text-zinc-300 text-lg">----</span></h1>
-            <div id="qrcode" class="p-2 bg-black rounded-lg"></div>
-            <p class="text-zinc-600 text-xs mt-8 tracking-wider animate-pulse">請觀眾掃描後，點擊任意處進入純黑主控模式</p>
-        </div>
-    </div>
-    
-    <div id="stealth-curtain" class="hidden fixed inset-0 w-screen h-screen bg-black z-[6000] touch-none select-none">
-        <div id="status-indicator" class="fixed bottom-6 left-6 w-2.5 h-2.5 rounded-full bg-white opacity-[0.08] transition-all duration-300"></div>
-    </div>
-
-
-    <div id="spectator-ui" class="hidden fixed inset-0 w-full h-full z-[1000]">
-        <a-scene 
-            id="ar-scene"
-            mindar-image="imageTargetSrc: ./targets.mind; autoStart: false; uiScanning: no; uiLoading: no;" 
-            color-space="sRGB" 
-            renderer="colorManagement: true, physicallyCorrectLights" 
-            vr-mode-ui="enabled: false" 
-            device-orientation-permission-ui="enabled: false">
-            
-            <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
-
-            <a-entity mindar-image-target="targetIndex: 0">
-                <a-plane id="cardPlane" position="0 0 0" width="1" height="1.4" material="transparent: true; opacity: 0; crossOrigin: anonymous"></a-plane>
-            </a-entity>
-        </a-scene>
-    </div>
-    
-    <div id="splash-screen" class="hidden fixed inset-0 w-screen h-screen bg-black flex flex-col items-center justify-center z-[9999] cursor-pointer p-8">
-        <div class="text-center space-y-3 pointer-events-none">
-            <p class="text-zinc-700 text-xs tracking-[0.4em] uppercase font-light animate-pulse">The Frozen Proof</p>
-            <p class="text-zinc-400 text-sm font-light tracking-wide">點擊螢幕以連結內在感知</p>
-        </div>
-    </div>
-
+    <div id="app-container" class="w-full h-full bg-black"></div>
 
     <script>
         // --- 1. FIREBASE 初始化設定 ---
@@ -86,51 +47,58 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
-        // --- 2. 路由與身份即時物理隔離 ---
+        // --- 2. 路由與身份嚴格隔離分流 ---
         const urlParams = new URLSearchParams(window.location.search);
         const mode = urlParams.get('mode');
         const paramRoom = urlParams.get('room');
         
         let currentRoom = paramRoom;
+        const appContainer = document.getElementById('app-container');
         
         if (mode === 'master' || (!mode && !paramRoom)) {
-            // 【魔術師端】物理拔除觀眾端 DOM，防止元件衝突
-            document.getElementById('spectator-ui').remove();
-            document.getElementById('splash-screen').remove();
+            // 【魔術師端】直接啟動，完全不碰任何 AR 相關程式碼
             initMasterMode();
         } else if (currentRoom) {
-            // 【觀眾端】物理拔除魔術師端 DOM，防止干擾
-            document.getElementById('master-ui').remove();
-            document.getElementById('stealth-curtain').remove();
-            initSpectatorMode();
+            // 【觀眾端】先進入古典風格的點擊引導頁面
+            initSpectatorSplash();
         }
 
         // ==========================================
-        // 【魔術師邏輯】純黑高隱蔽機制
+        // 【魔術師端】極致黑底與高隱蔽手勢邏輯
         // ==========================================
         function initMasterMode() {
-            const masterUi = document.getElementById('master-ui');
-            masterUi.classList.remove('hidden');
-            
             if (!currentRoom) {
                 currentRoom = Math.floor(1000 + Math.random() * 9000).toString();
             }
-            document.getElementById('room-display').innerText = currentRoom;
+
+            // 動態注入純淨的魔術師端 HTML 結構，絕無 A-Frame 殘留
+            appContainer.innerHTML = `
+                <div id="master-ui" class="fixed inset-0 w-screen h-screen flex flex-col items-center justify-center bg-black z-[5000] cursor-pointer">
+                    <div id="qr-container" class="flex flex-col items-center p-6 bg-black">
+                        <h1 class="text-zinc-500 text-sm font-mono mb-6 tracking-widest">ROOM: <span id="room-display" class="font-bold text-zinc-300 text-lg">${currentRoom}</span></h1>
+                        <div id="qrcode" class="p-2 bg-black rounded-lg"></div>
+                        <p class="text-zinc-600 text-xs mt-8 tracking-wider animate-pulse">請觀眾掃描後，點擊任意處進入純黑主控模式</p>
+                    </div>
+                </div>
+                <div id="stealth-curtain" class="hidden fixed inset-0 w-screen h-screen bg-black z-[6000] touch-none select-none">
+                    <div id="status-indicator" class="fixed bottom-6 left-6 w-2.5 h-2.5 rounded-full bg-white opacity-[0.08] transition-all duration-300"></div>
+                </div>
+            `;
             
             // 生成觀眾專屬網址
             const spectatorUrl = `${window.location.origin}${window.location.pathname}?room=${currentRoom}`;
             
-            // 【關鍵】將 QR Code 設定為黑底白線風格
+            // 生成「黑底白線」的反色 QR Code，降低亮度防止穿幫
             new QRCode(document.getElementById("qrcode"), {
                 text: spectatorUrl,
                 width: 220,
                 height: 220,
-                colorDark : "#ffffff",  // QR Code 線條為白色
-                colorLight : "#000000"  // QR Code 背景為黑色
+                colorDark : "#ffffff",
+                colorLight : "#000000"
             });
             
             // 點擊 QR 畫面切換為完全純黑
-            masterUi.addEventListener('click', () => {
+            document.getElementById('master-ui').addEventListener('click', () => {
                 document.getElementById('stealth-curtain').classList.remove('hidden');
             });
             
@@ -150,9 +118,7 @@
                 if (e.touches.length === 1) {
                     touchStartPos = { x: e.touches[0].clientX, y: e.touches[0].clientY };
                 }
-                pressTimer = setTimeout(() => {
-                    resetMasterSystem();
-                }, 3000);
+                pressTimer = setTimeout(() => resetMasterSystem(), 3000);
             });
             
             curtain.addEventListener('touchmove', () => clearTimeout(pressTimer));
@@ -168,7 +134,7 @@
                 let dx = x2 - x1;
                 let dy = y2 - y1;
                 
-                // 雙擊直接鎖定鬼牌
+                // 雙擊鎖定鬼牌
                 let now = Date.now();
                 if (now - lastTapTime < 300 && Math.sqrt(dx*dx + dy*dy) < 15) {
                     sendForcedCard("Joker");
@@ -193,15 +159,13 @@
                     else { edge = 3; dir = dy < 0 ? 1 : -1; }
                 }
                 
-                // 兩筆劃狀態指示點切換
+                // 兩筆劃狀態指示小點
                 if (strokes.length === 0) {
-                    // 輸入第一筆：提示點亮起 (提升不透明度並微弱閃爍)
                     strokes.push({ edge, dir });
                     indicator.classList.remove('opacity-[0.08]');
                     indicator.classList.add('opacity-70', 'animate-pulse');
                     if (navigator.vibrate) navigator.vibrate(40);
                 } else if (strokes.length === 1) {
-                    // 輸入第二筆：計算送出，提示點恢復極暗隱形狀態
                     let s1 = strokes[0];
                     let s2 = { edge, dir };
                     strokes = []; 
@@ -258,33 +222,84 @@
         }
 
         // ==========================================
-        // 【觀眾邏輯】安全手動喚醒 AR 機制
+        // 【觀眾端】動態腳本注入與手動相機喚醒機制
         // ==========================================
-        function initSpectatorMode() {
-            document.getElementById('spectator-ui').classList.remove('hidden');
-            const splash = document.getElementById('splash-screen');
-            splash.classList.remove('hidden');
+        function initSpectatorSplash() {
+            // 先渲染古典風格的儀式引導介面，此時網頁乾淨，絕無黑屏死鎖問題
+            appContainer.innerHTML = `
+                <div id="splash-screen" class="fixed inset-0 w-screen h-screen bg-black flex flex-col items-center justify-center z-[9999] cursor-pointer p-8">
+                    <div class="text-center space-y-3 pointer-events-none">
+                        <p class="text-zinc-700 text-xs tracking-[0.4em] uppercase font-light animate-pulse">The Frozen Proof</p>
+                        <p class="text-zinc-400 text-sm font-light tracking-wide">點擊螢幕以連結內在感知</p>
+                    </div>
+                </div>
+            `;
             
             // 監聽觀眾的實質點擊行為
-            splash.addEventListener('click', () => {
-                splash.remove(); // 移除遮罩幕布
+            document.getElementById('splash-screen').addEventListener('click', () => {
+                document.getElementById('splash-screen').innerHTML = `
+                    <div class="text-center space-y-3">
+                        <p class="text-zinc-500 text-sm font-light tracking-widest animate-pulse">正在開啟相機傳感器...</p>
+                    </div>
+                `;
                 
-                // 【核心突破】利用使用者手動點擊事件，直接命令 MindAR 系統強制開機啟動相機！
+                // 點擊後，才開始動態把 A-Frame 與 MindAR 的 JS 檔案寫入瀏覽器中
+                loadARScripts(() => {
+                    document.getElementById('splash-screen').remove(); // 移除引導頁
+                    injectAndStartAR(); // 腳本就緒後，正式喚醒相機
+                });
+            });
+        }
+
+        // 動態載入 JS 檔案的函式
+        function loadARScripts(callback) {
+            const aframeScript = document.createElement('script');
+            aframeScript.src = "https://aframe.io/releases/1.2.0/aframe.min.js";
+            aframeScript.onload = () => {
+                const mindarScript = document.createElement('script');
+                mindarScript.src = "https://cdn.jsdelivr.net/npm/mind-ar@1.1.4/dist/mindar-image-aframe.prod.js";
+                mindarScript.onload = callback;
+                document.head.appendChild(mindarScript);
+            };
+            document.head.appendChild(aframeScript);
+        }
+
+        // 正式注入 AR DOM 並強行喚醒相機權限
+        function injectAndStartAR() {
+            appContainer.innerHTML = `
+                <div id="spectator-ui" class="w-full h-full bg-black">
+                    <a-scene 
+                        id="ar-scene"
+                        mindar-image="imageTargetSrc: ./targets.mind; autoStart: false; uiScanning: no; uiLoading: no;" 
+                        color-space="sRGB" 
+                        renderer="colorManagement: true, physicallyCorrectLights" 
+                        vr-mode-ui="enabled: false" 
+                        device-orientation-permission-ui="enabled: false">
+                        
+                        <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+
+                        <a-entity mindar-image-target="targetIndex: 0">
+                            <a-plane id="cardPlane" position="0 0 0" width="1" height="1.4" material="transparent: true; opacity: 0; crossOrigin: anonymous"></a-plane>
+                        </a-entity>
+                    </a-scene>
+                </div>
+            `;
+            
+            // A-Frame 渲染完畢後，立刻強制執行開機與相機喚醒
+            setTimeout(() => {
                 const sceneEl = document.getElementById('ar-scene');
                 if (sceneEl && sceneEl.systems['mindar-image-system']) {
-                    sceneEl.systems['mindar-image-system'].start(); // 正式呼叫相機權限
+                    sceneEl.systems['mindar-image-system'].start(); // 100% 呼叫出瀏覽器相機權限提示
                 }
-                
-                // 開啟 Firebase 雲端監聽
                 startDatabaseListener();
-            });
+            }, 100);
         }
 
         function startDatabaseListener() {
             db.ref(`rooms/${currentRoom}`).on('value', (snapshot) => {
                 const data = snapshot.val();
                 if (data && data.forcedCard) {
-                    db.ref(`rooms/${currentRoom}`).off(); // 拔掉資料庫線路
+                    db.ref(`rooms/${currentRoom}`).off(); // 拔掉線路
                     const imagePath = getBicycleImagePath(data.forcedCard);
                     startRevealAnimation(imagePath);
                 }
