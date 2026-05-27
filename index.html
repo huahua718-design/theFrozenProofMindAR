@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>The Frozen Proof - AR Edition</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    
+    <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.1.4/dist/mindar-image-aframe.prod.js"></script>
+
+    <style>
+        /* 抹除一切科技感：強制隱藏 MindAR 預設的綠色掃描框與載入動畫 */
+        .mindar-ui-scanning, .mindar-ui-loading, .mindar-ui-compatibility {
+            display: none !important;
+        }
+        body {
+            background-color: #000;
+            margin: 0;
+            overflow: hidden;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="master-ui" class="hidden fixed inset-0 flex flex-col items-center justify-center bg-white z-[5000]">
+        <div id="qr-container" class="flex flex-col items-center p-6 bg-white rounded-2xl shadow-xl">
+            <h1 class="text-gray-500 text-sm font-mono mb-4">ROOM: <span id="room-display" class="font-bold text-black text-lg">----</span></h1>
+            <div id="qrcode"></div>
+            <p class="text-gray-400 text-xs mt-4 animate-pulse">請觀眾掃描後，點擊任意處進入純黑主控模式</p>
+        </div>
+    </div>
+    
+    <div id="stealth-curtain" class="hidden fixed inset-0 bg-black z-[6000] touch-none"></div>
+
+    <div id="spectator-ui" class="hidden w-full h-full">
+        <a-scene 
+            id="ar-scene"
+            mindar-image="imageTargetSrc: ./targets.mind; uiScanning: no; uiLoading: no;" 
+            color-space="sRGB" 
+            renderer="colorManagement: true, physicallyCorrectLights" 
+            vr-mode-ui="enabled: false" 
+            device-orientation-permission-ui="enabled: false">
+            
+            <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+
+            <a-entity mindar-image-target="targetIndex: 0">
+                <a-plane id="cardPlane" position="0 0 0" width="1" height="1.4" material="transparent: true; opacity: 0; crossOrigin: anonymous"></a-plane>
+            </a-entity>
+        </a-scene>
+    </div>
+
+    <script>
+        // --- 1. FIREBASE 初始化設定 ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyAKrHMMbS6RHzOUgduse6EOvUzjKA1YWLo",
+            authDomain: "the-frozen-proof.firebaseapp.com",
+            databaseURL: "https://the-frozen-proof-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "the-frozen-proof",
+            storageBucket: "the-frozen-proof.firebasestorage.app",
+            messagingSenderId: "414127963950",
+            appId: "1:414127963950:web:b9822ebd07e5097a8a04bf",
+            measurementId: "G-CENFSW3FR7"
+        };
+        
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        // --- 2. 路由參數解析與模式分流 ---
+        const urlParams = new URLSearchParams(window.location.search);
+        const mode = urlParams.get('mode');
+        const paramRoom = urlParams.get('room');
+        
+        let currentRoom = paramRoom;
+        
+        if (mode === 'master' || (!mode && !paramRoom)) {
+            // 進入魔術師模式
+            initMasterMode();
+        } else if (currentRoom) {
+            // 進入觀眾模式
+            initSpectatorMode();
+        }
+
+        // ==========================================
+        // 【魔術師端】核心邏輯運作 (更正後兩筆劃演算法)
+        // ==========================================
+        let strokes = [];
+        let touchStartPos = null;
+        let lastTapTime = 0;
+        let pressTimer = null;
+
+        function initMasterMode() {
+            document.getElementById('master-ui').classList.remove('hidden');
+            
+            // 隨機生成 4 位數房號
+            if (!currentRoom) {
+                currentRoom = Math.floor(1000 + Math.random() * 9000).toString();
+            }
+            document.getElementById('room-display').innerText = currentRoom;
+            
+            // 生成觀眾專屬掃描網址
+            const spectatorUrl = `${window.location.origin}${window.location.pathname}?room=${currentRoom}`;
+            new QRCode(document.getElementById("qrcode"), {
+                text: spectatorUrl,
+                width: 200,
+                height: 200
+            });
+            
+            // 點擊 UI 區塊立刻進入「100% 純黑模式」
+            document.getElementById('master-ui').addEventListener('click', () => {
+                document.getElementById('stealth-curtain').classList.remove('hidden');
+            });
+            
+            setupMasterGestures();
+        }
+
+        function setupMasterGestures() {
+            const curtain = document.getElementById('stealth-curtain');
+            
+            // A. 長按 3 秒重置機關
+            curtain.addEventListener('touchstart', (e) => {
+                if (e.touches.length === 1) {
+                    touchStartPos = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+                }
+                pressTimer = setTimeout(() => {
+                    resetMasterSystem();
+                }, 3000);
+            });
+            
+            curtain.addEventListener('touchmove', () => clearTimeout(pressTimer));
+            
+            curtain.addEventListener('touchend', (e) => {
+                clearTimeout(pressTimer);
+                if (!touchStartPos) return;
+                
+                let x1 = touchStartPos.x, y1 = touchStartPos.y;
+                let x2 = e.changedTouches[0].clientX, y2 = e.changedTouches[0].clientY;
+                touchStartPos = null;
+                
+                let dx = x2 - x1;
+                let dy = y2 - y1;
+                
+                // B. 雙擊判定 (Double Tap -> 鎖定鬼牌)
+                let now = Date.now();
+                if (now - lastTapTime < 300 && Math.sqrt(dx*dx + dy*dy) < 15) {
+                    sendForcedCard("Joker");
+                    strokes = [];
+                    return;
+                }
+                lastTapTime = now;
+                
+                // C. 兩筆劃演算法偵測
+                if (Math.sqrt(dx*dx + dy*dy) < 30) return; // 忽略極微小的噪動
+                
+                let W = window.innerWidth;
+                let H = window.innerHeight;
+                let avgX = (x1 + x2) / 2;
+                let avgY = (y1 + y2) / 2;
+                
+                let edge, dir;
+                if (Math.abs(dx) > Math.abs(dy)) {
+                    // 橫向劃線
+                    if (avgY < H / 2) {
+                        edge = 0; // 上邊緣
+                        dir = dx > 0 ? 1 : -1; // 順時針(1) / 逆時針(-1)
+                    } else {
+                        edge = 2; // 下邊緣
+                        dir = dx < 0 ? 1 : -1; // 順時針(1) / 逆時針(-1)
+                    }
+                } else {
+                    // 縱向劃線
+                    if (avgX >= W / 2) {
+                        edge = 1; // 右邊緣
+                        dir = dy > 0 ? 1 : -1; // 順時針(1) / 逆時針(-1)
+                    } else {
+                        edge = 3; // 左邊緣
+                        dir = dy < 0 ? 1 : -1; // 順時針(1) / 逆時針(-1)
+                    }
+                }
+                
+                processStrokes(edge, dir);
+            });
+        }
+
+        function processStrokes(edge, dir) {
+            if (strokes.length === 0) {
+                strokes.push({ edge, dir });
+            } else if (strokes.length === 1) {
+                let s1 = strokes[0];
+                let s2 = { edge, dir };
+                strokes = []; 
+                
+                let suitBase = 0;
+                if (s1.edge === 3) suitBase = 0;   // 左邊緣 = 梅花
+                if (s1.edge === 0) suitBase = 13;  // 上邊緣 = 方塊
+                if (s1.edge === 1) suitBase = 26;  // 右邊緣 = 紅心
+                if (s1.edge === 2) suitBase = 39;  // 下邊緣 = 黑桃
+                
+                let baseOffset = s1.dir === 1 ? 0 : 6; 
+                let finalIndex = 0;
+                
+                if (s2.edge === s1.edge) {
+                    finalIndex = suitBase + 12; // 同邊判定 -> 鎖定 Ace
+                } else {
+                    let diff = (s2.edge - s1.edge + 4) % 4;
+                    let stroke2Offset = (diff - 1) * 2 + (s2.dir === 1 ? 0 : 1);
+                    finalIndex = suitBase + baseOffset + stroke2Offset;
+                }
+                
+                const ranks = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
+                const suits = ['♣','♦','♥','♠'];
+                let targetCard = ranks[finalIndex % 13] + suits[Math.floor(finalIndex / 13)];
+                
+                sendForcedCard(targetCard);
+            }
+        }
+
+        function sendForcedCard(cardName) {
+            db.ref(`rooms/${currentRoom}`).set({
+                forcedCard: cardName,
+                timestamp: firebase.database.ServerValue.TIMESTAMP
+            });
+            if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+        }
+
+        function resetMasterSystem() {
+            strokes = [];
+            db.ref(`rooms/${currentRoom}`).remove();
+            if (navigator.vibrate) navigator.vibrate(500);
+        }
+
+        // ==========================================
+        // 【觀眾端】核心邏輯運作 (Bicycle 圖片對應引擎)
+        // ==========================================
+        function initSpectatorMode() {
+            document.getElementById('spectator-ui').classList.remove('hidden');
+            
+            db.ref(`rooms/${currentRoom}`).on('value', (snapshot) => {
+                const data = snapshot.val();
+                if (data && data.forcedCard) {
+                    db.ref(`rooms/${currentRoom}`).off(); // 過河拆橋：中斷資料庫連線
+                    
+                    // 根據提示詞規則，解析出正確的 Bicycle 圖片路徑
+                    const imagePath = getBicycleImagePath(data.forcedCard);
+                    startRevealAnimation(imagePath);
+                }
+            });
+        }
+
+        // 【核心】將牌名解析為合法的全小寫原始碼路徑
+        function getBicycleImagePath(cardName) {
+            const basePath = "./cards/";
+            
+            // 特殊卡牌：黑白鬼牌
+            if (cardName === "Joker") {
+                return `${basePath}joker_black.png`;
+            }
+            
+            // 分離點數與花色 (例如 "10♥" -> rank="10", suit="♥" / "K♠" -> rank="K", suit="♠")
+            let rank = cardName.slice(0, -1);
+            let suitSign = cardName.slice(-1);
+            
+            // 1. 花色轉換對照
+            let suitMap = {
+                '♣': 'club',
+                '♦': 'diamond',
+                '♥': 'heart',
+                '♠': 'spade'
+            };
+            let suit = suitMap[suitSign];
+            
+            // 2. 點數轉換對照
+            let rankMap = {
+                'A': '1',
+                'J': 'jack',
+                'Q': 'queen',
+                'K': 'king'
+            };
+            // 如果在 rankMap 找不到（2 到 10），就直接使用原本的數字字串
+            let point = rankMap[rank] ? rankMap[rank] : rank;
+            
+            // 完美組合檔名，並強制執行全小寫規則
+            return `${basePath}${suit}_${point}.png`.toLowerCase();
+        }
+
+        function startRevealAnimation(imagePath) {
+            const cardPlane = document.getElementById('cardPlane');
+            
+            // 動態更換 A-Frame 面板的材質貼圖路徑
+            cardPlane.setAttribute('material', `src: ${imagePath}; transparent: true; opacity: 0`);
+            
+            // 為了防止圖片沒下載完就顯示導致閃爍，監聽紋理加載事件
+            const textureLoader = new THREE.TextureLoader();
+            textureLoader.load(imagePath, (texture) => {
+                // 圖片加載成功，將貼圖完美塞入 A-Frame 網格中
+                const mesh = cardPlane.getObject3D('mesh');
+                if (mesh) {
+                    mesh.material.map = texture;
+                    mesh.material.needsUpdate = true;
+                }
+                
+                // 動態融化顯影特效開始
+                let opacityVal = 0;
+                const fadeInterval = setInterval(() => {
+                    opacityVal += 0.02;
+                    if (opacityVal >= 1) {
+                        opacityVal = 1;
+                        clearInterval(fadeInterval);
+                        // 顯影完成，延遲半秒後進行全螢幕靜態截圖，時空留痕
+                        setTimeout(freezeAndCaptureArtifact, 500);
+                    }
+                    cardPlane.setAttribute('material', `opacity: ${opacityVal}`);
+                }, 40);
+            });
+        }
+
+        // 終極防線：全畫面複合截圖、關閉相機、斷開連線、長按儲存
+        function freezeAndCaptureArtifact() {
+            const video = document.querySelector('video');
+            const sceneEl = document.getElementById('ar-scene');
+            const aframeCanvas = sceneEl.canvas;
+            
+            const mergeCanvas = document.createElement('canvas');
+            mergeCanvas.width = aframeCanvas.width;
+            mergeCanvas.height = aframeCanvas.height;
+            const ctx = mergeCanvas.getContext('2d');
+            
+            // 1. 繪製底部真實街景
+            if (video) ctx.drawImage(video, 0, 0, mergeCanvas.width, mergeCanvas.height);
+            // 2. 疊加頂部已完全顯影的 Bicycle AR 撲克牌
+            ctx.drawImage(aframeCanvas, 0, 0, mergeCanvas.width, mergeCanvas.height);
+            
+            const finalDataURL = mergeCanvas.toDataURL('image/jpeg', 0.95);
+            
+            // 3. 用真實 img 標籤覆蓋全螢幕，讓畫面絕對「凍結」
+            const nativeImg = document.createElement('img');
+            nativeImg.src = finalDataURL;
+            nativeImg.className = "fixed inset-0 w-full h-full object-cover z-[99999]";
+            document.body.appendChild(nativeImg);
+            
+            // 4. 徹底關閉相機與追蹤引擎
+            if(sceneEl.systems['mindar-image-system']) {
+                sceneEl.systems['mindar-image-system'].stop();
+            }
+            if (video && video.srcObject) {
+                video.srcObject.getTracks().forEach(track => track.stop());
+            }
+        }
+    </script>
+</body>
+</html>
