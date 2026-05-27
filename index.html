@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>The Frozen Proof - AR Edition</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
@@ -14,22 +14,26 @@
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.1.4/dist/mindar-image-aframe.prod.js"></script>
 
     <style>
-        /* 強制隱藏 MindAR 預設的綠色掃描框與載入動畫 */
+        /* 強制隱藏 MindAR 預設的 UI 元素 */
         .mindar-ui-scanning, .mindar-ui-loading, .mindar-ui-compatibility {
             display: none !important;
         }
-        body {
-            background-color: #000;
+        html, body {
+            background-color: #000 !important;
             margin: 0;
+            padding: 0;
+            width: 100vw;
+            height: 100vh;
+            height: -webkit-fill-available;
             overflow: hidden;
             -webkit-user-select: none;
             user-select: none;
         }
     </style>
 </head>
-<body>
+<body class="bg-black">
 
-    <div id="app-container" class="w-full h-full"></div>
+    <div id="app-container" class="w-full h-full bg-black"></div>
 
     <script>
         // --- 1. FIREBASE 初始化設定 ---
@@ -47,7 +51,7 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
-        // --- 2. 路由參數解析與模式分流 ---
+        // --- 2. 路由參數解析 ---
         const urlParams = new URLSearchParams(window.location.search);
         const mode = urlParams.get('mode');
         const paramRoom = urlParams.get('room');
@@ -56,34 +60,34 @@
         const appContainer = document.getElementById('app-container');
         
         if (mode === 'master' || (!mode && !paramRoom)) {
-            // 進入魔術師模式
             initMasterMode();
         } else if (currentRoom) {
-            // 進入觀眾模式
-            initSpectatorMode();
+            initSpectatorSplash(); // 觀眾端先進入互動引導頁，破解瀏覽器權限鎖
         }
 
         // ==========================================
-        // 【魔術師端】核心邏輯與動態 UI
+        // 【魔術師端】極致全黑與隱蔽提示點
         // ==========================================
         function initMasterMode() {
             if (!currentRoom) {
                 currentRoom = Math.floor(1000 + Math.random() * 9000).toString();
             }
 
-            // 動態注入純淨的魔術師 UI，完全不包含 A-Frame 標籤，徹底解決點擊被阻擋與排版問題
+            // 注入魔術師 UI (動態適應全螢幕，防止白邊)
             appContainer.innerHTML = `
-                <div id="master-ui" class="fixed inset-0 flex flex-col items-center justify-center bg-white z-[5000] cursor-pointer">
+                <div id="master-ui" class="fixed inset-0 w-screen h-screen flex flex-col items-center justify-center bg-white z-[5000] cursor-pointer">
                     <div id="qr-container" class="flex flex-col items-center p-6 bg-white rounded-2xl shadow-xl">
                         <h1 class="text-gray-500 text-sm font-mono mb-4">ROOM: <span id="room-display" class="font-bold text-black text-lg">${currentRoom}</span></h1>
                         <div id="qrcode"></div>
                         <p class="text-gray-400 text-xs mt-4 animate-pulse">請觀眾掃描後，點擊任意處進入純黑主控模式</p>
                     </div>
                 </div>
-                <div id="stealth-curtain" class="hidden fixed inset-0 bg-black z-[6000] touch-none"></div>
+                <div id="stealth-curtain" class="hidden fixed inset-0 w-screen h-screen bg-black z-[6000] touch-none select-none">
+                    <div id="status-indicator" class="fixed bottom-6 left-6 w-2.5 h-2.5 rounded-full bg-white opacity-10 transition-all duration-300"></div>
+                </div>
             `;
             
-            // 生成觀眾專屬掃描網址
+            // 生成二維碼
             const spectatorUrl = `${window.location.origin}${window.location.pathname}?room=${currentRoom}`;
             new QRCode(document.getElementById("qrcode"), {
                 text: spectatorUrl,
@@ -91,7 +95,7 @@
                 height: 200
             });
             
-            // 點擊 UI 區塊立刻進入「100% 純黑模式」
+            // 點擊進入全黑
             document.getElementById('master-ui').addEventListener('click', () => {
                 document.getElementById('stealth-curtain').classList.remove('hidden');
             });
@@ -106,8 +110,9 @@
 
         function setupMasterGestures() {
             const curtain = document.getElementById('stealth-curtain');
+            const indicator = document.getElementById('status-indicator');
             
-            // A. 長按 3 秒重置機關
+            // A. 長按 3 秒重置
             curtain.addEventListener('touchstart', (e) => {
                 if (e.touches.length === 1) {
                     touchStartPos = { x: e.touches[0].clientX, y: e.touches[0].clientY };
@@ -130,7 +135,7 @@
                 let dx = x2 - x1;
                 let dy = y2 - y1;
                 
-                // B. 雙擊判定 (Double Tap -> 鎖定鬼牌)
+                // B. 雙擊直接鎖定鬼牌
                 let now = Date.now();
                 if (now - lastTapTime < 300 && Math.sqrt(dx*dx + dy*dy) < 15) {
                     sendForcedCard("Joker");
@@ -139,7 +144,7 @@
                 }
                 lastTapTime = now;
                 
-                // C. 兩筆劃演算法偵測
+                // C. 兩筆劃偵測
                 if (Math.sqrt(dx*dx + dy*dy) < 30) return; 
                 
                 let W = window.innerWidth;
@@ -150,57 +155,66 @@
                 let edge, dir;
                 if (Math.abs(dx) > Math.abs(dy)) {
                     if (avgY < H / 2) {
-                        edge = 0; // 上邊緣
+                        edge = 0; // 上
                         dir = dx > 0 ? 1 : -1; 
                     } else {
-                        edge = 2; // 下邊緣
+                        edge = 2; // 下
                         dir = dx < 0 ? 1 : -1; 
                     }
                 } else {
                     if (avgX >= W / 2) {
-                        edge = 1; // 右邊緣
+                        edge = 1; // 右
                         dir = dy > 0 ? 1 : -1; 
                     } else {
-                        edge = 3; // 左邊緣
+                        edge = 3; // 左
                         dir = dy < 0 ? 1 : -1; 
                     }
                 }
                 
-                processStrokes(edge, dir);
+                // 執行輸入邏輯
+                if (strokes.length === 0) {
+                    // 輸入第一筆：提示點亮起 (變為 80% 不透明度並微弱閃爍)
+                    strokes.push({ edge, dir });
+                    indicator.classList.remove('opacity-10');
+                    indicator.classList.add('opacity-80', 'animate-pulse');
+                    if (navigator.vibrate) navigator.vibrate(40); // 輕微觸覺回饋
+                } else if (strokes.length === 1) {
+                    // 輸入第二筆：計算並發送，提示點熄滅
+                    let s1 = strokes[0];
+                    let s2 = { edge, dir };
+                    strokes = []; 
+                    
+                    indicator.classList.remove('opacity-80', 'animate-pulse');
+                    indicator.classList.add('opacity-10');
+                    
+                    processTwoStrokes(s1, s2);
+                }
             });
         }
 
-        function processStrokes(edge, dir) {
-            if (strokes.length === 0) {
-                strokes.push({ edge, dir });
-            } else if (strokes.length === 1) {
-                let s1 = strokes[0];
-                let s2 = { edge, dir };
-                strokes = []; 
-                
-                let suitBase = 0;
-                if (s1.edge === 3) suitBase = 0;   // 左 = 梅花
-                if (s1.edge === 0) suitBase = 13;  // 上 = 方塊
-                if (s1.edge === 1) suitBase = 26;  // 右 = 紅心
-                if (s1.edge === 2) suitBase = 39;  // 下 = 黑桃
-                
-                let baseOffset = s1.dir === 1 ? 0 : 6; 
-                let finalIndex = 0;
-                
-                if (s2.edge === s1.edge) {
-                    finalIndex = suitBase + 12; // Ace
-                } else {
-                    let diff = (s2.edge - s1.edge + 4) % 4;
-                    let stroke2Offset = (diff - 1) * 2 + (s2.dir === 1 ? 0 : 1);
-                    finalIndex = suitBase + baseOffset + stroke2Offset;
-                }
-                
-                const ranks = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
-                const suits = ['♣','♦','♥','♠'];
-                let targetCard = ranks[finalIndex % 13] + suits[Math.floor(finalIndex / 13)];
-                
-                sendForcedCard(targetCard);
+        function processTwoStrokes(s1, s2) {
+            let suitBase = 0;
+            if (s1.edge === 3) suitBase = 0;   // 左 = 梅花
+            if (s1.edge === 0) suitBase = 13;  // 上 = 方塊
+            if (s1.edge === 1) suitBase = 26;  // 右 = 紅心
+            if (s1.edge === 2) suitBase = 39;  // 下 = 黑桃
+            
+            let baseOffset = s1.dir === 1 ? 0 : 6; 
+            let finalIndex = 0;
+            
+            if (s2.edge === s1.edge) {
+                finalIndex = suitBase + 12; // Ace
+            } else {
+                let diff = (s2.edge - s1.edge + 4) % 4;
+                let stroke2Offset = (diff - 1) * 2 + (s2.dir === 1 ? 0 : 1);
+                finalIndex = suitBase + baseOffset + stroke2Offset;
             }
+            
+            const ranks = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
+            const suits = ['♣','♦','♥','♠'];
+            let targetCard = ranks[finalIndex % 13] + suits[Math.floor(finalIndex / 13)];
+            
+            sendForcedCard(targetCard);
         }
 
         function sendForcedCard(cardName) {
@@ -208,22 +222,44 @@
                 forcedCard: cardName,
                 timestamp: firebase.database.ServerValue.TIMESTAMP
             });
-            if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+            if (navigator.vibrate) navigator.vibrate([80, 40, 80]);
         }
 
         function resetMasterSystem() {
             strokes = [];
+            const indicator = document.getElementById('status-indicator');
+            if(indicator) {
+                indicator.className = "fixed bottom-6 left-6 w-2.5 h-2.5 rounded-full bg-white opacity-10 transition-all duration-300";
+            }
             db.ref(`rooms/${currentRoom}`).remove();
-            if (navigator.vibrate) navigator.vibrate(500);
+            if (navigator.vibrate) navigator.vibrate(400);
         }
 
         // ==========================================
-        // 【觀眾端】核心邏輯與動態 AR 注入
+        // 【觀眾端】引導點擊（授權相機）與 AR 啟動
         // ==========================================
-        function initSpectatorMode() {
-            // 當場注入 AR 元素，此時容器是完全可見的，A-Frame 能精確抓到手機寬高，告別黑屏！
+        function initSpectatorSplash() {
+            // 先渲染一個古典優雅的「互動按鈕幕布」，引導觀眾點擊，藉此合法取得相機權限
             appContainer.innerHTML = `
-                <div id="spectator-ui" class="w-full h-full">
+                <div id="splash-screen" class="fixed inset-0 w-screen h-screen bg-black flex flex-col items-center justify-center z-[9999] cursor-pointer p-8">
+                    <div class="text-center space-y-3">
+                        <p class="text-zinc-600 text-xs tracking-[0.3em] uppercase font-light animate-pulse">The Frozen Proof</p>
+                        <p class="text-zinc-400 text-sm font-light tracking-wide">點擊螢幕以連結內在感知</p>
+                    </div>
+                </div>
+            `;
+            
+            // 當觀眾點擊螢幕的瞬間，立刻請求相機權限並載入 AR
+            document.getElementById('splash-screen').addEventListener('click', () => {
+                document.getElementById('splash-screen').remove(); // 拔掉引導頁
+                initActualAR(); // 啟動真正的 AR 引擎
+            });
+        }
+
+        function initActualAR() {
+            // 動態注入 AR 視域與 A-Frame 標籤
+            appContainer.innerHTML = `
+                <div id="spectator-ui" class="w-full h-full bg-black">
                     <a-scene 
                         id="ar-scene"
                         mindar-image="imageTargetSrc: ./targets.mind; uiScanning: no; uiLoading: no;" 
@@ -241,11 +277,11 @@
                 </div>
             `;
             
-            // 開始監聽雲端資料庫
+            // 開始向雲端監聽魔術師的訊號
             db.ref(`rooms/${currentRoom}`).on('value', (snapshot) => {
                 const data = snapshot.val();
                 if (data && data.forcedCard) {
-                    db.ref(`rooms/${currentRoom}`).off(); // 拔掉線路
+                    db.ref(`rooms/${currentRoom}`).off(); // 過河拆橋
                     const imagePath = getBicycleImagePath(data.forcedCard);
                     startRevealAnimation(imagePath);
                 }
