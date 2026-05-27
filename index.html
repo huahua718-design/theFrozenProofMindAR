@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>The Frozen Proof - Three.js Edition</title>
+    <title>The Frozen Proof - Three.js Fixed Edition</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -24,14 +24,14 @@
             -webkit-user-select: none;
             user-select: none;
         }
-        /* 隱藏 MindAR 預設 UI */
         .mindar-ui-overlay { display: none !important; }
         
-        /* 確保相機容器填滿畫面 */
+        /* 讓相機容器常駐在底層，維持 100% 寬高，絕對不要 hidden */
         #robot-camera-view-container {
             position: fixed;
             inset: 0;
             z-index: 10;
+            background-color: #000;
         }
         #robot-camera-view-container video, 
         #robot-camera-view-container canvas {
@@ -51,7 +51,7 @@
     <script>
         // --- 1. FIREBASE 初始化 ---
         const firebaseConfig = {
-            apiKey: "AIzaSyAKrHMMbS6RHzOUgduse6EOvUzjKA1YWLo",
+            apiKey: "AIzaSyAKrHMMbS6RHzOUgduseEOvUzjKA1YWLo",
             authDomain: "the-frozen-proof.firebaseapp.com",
             databaseURL: "https://the-frozen-proof-default-rtdb.asia-southeast1.firebasedatabase.app",
             projectId: "the-frozen-proof",
@@ -77,7 +77,7 @@
         }
 
         // ==========================================
-        // 【魔術師端】純黑反色 QR Code 與暗號小點 (不變，完美保留)
+        // 【魔術師端】完美保留
         // ==========================================
         function initMasterMode() {
             if (!currentRoom) {
@@ -183,7 +183,7 @@
         }
 
         // ==========================================
-        // 【觀眾端】Three.js 核心接管相機與 AR 渲染
+        // 【觀眾端】時序與錯誤捕捉優化版
         // ==========================================
         let mindarThree = null;
         let cardMaterial = null;
@@ -196,23 +196,26 @@
                         <p class="text-zinc-400 text-sm font-light tracking-wide">點擊螢幕以連結內在感知</p>
                     </div>
                 </div>
-                <div id="robot-camera-view-container" class="hidden"></div>
+                <div id="robot-camera-view-container"></div>
             `;
             
-            document.getElementById('splash-screen').addEventListener('click', async () => {
+            document.getElementById('splash-screen').addEventListener('click', () => {
                 document.getElementById('splash-screen').innerHTML = `
                     <div class="text-center space-y-3">
                         <p class="text-zinc-500 text-sm font-light tracking-widest animate-pulse">正在開啟相機傳感器...</p>
                     </div>
                 `;
-                document.getElementById('robot-camera-view-container').classList.remove('hidden');
-                await startThreeCameraAR();
+                
+                // 給瀏覽器 50ms 重新編排 UI，隨即立刻發動相機，防止 iOS 阻擋
+                setTimeout(() => {
+                    startThreeCameraAR();
+                }, 50);
             });
         }
 
         async function startThreeCameraAR() {
             try {
-                // 1. 啟動 MindAR 的 Three.js 封裝 (負責自動接管相機與 3D 空間)
+                // 1. 初始化 MindAR 三維控制器
                 mindarThree = new window.MINDAR.IMAGE.MindARThree({
                     container: document.getElementById('robot-camera-view-container'),
                     imageTargetSrc: './targets.mind',
@@ -221,7 +224,7 @@
                 
                 const {renderer, scene, camera} = mindarThree;
 
-                // 2. 預先建立一個「全透明」的 3D 撲克牌平面，綁定在圖卡(Anchor 0)上
+                // 2. 建立 AR 牌影物件
                 const geometry = new THREE.PlaneGeometry(1, 1.4);
                 cardMaterial = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0 });
                 const cardPlane = new THREE.Mesh(geometry, cardMaterial);
@@ -229,25 +232,32 @@
                 const anchor = mindarThree.addAnchor(0);
                 anchor.group.add(cardPlane);
 
-                // 3. 正式啟動，這會完美呼叫相機權限
+                // 3. 啟動鏡頭與識別引擎
                 await mindarThree.start();
                 
-                // 4. 開機成功後，移除引導畫面
+                // 4. 成功開機，抹除遮罩
                 const splash = document.getElementById('splash-screen');
                 if (splash) splash.remove();
                 
-                // 5. 啟動 Firebase 監聽
+                // 5. 監聽 Firebase 訊號
                 startDatabaseListener();
                 
-                // 6. 讓 Three.js 開始運轉刷新畫面
+                // 6. 啟動渲染循環
                 renderer.setAnimationLoop(() => {
                     renderer.render(scene, camera);
                 });
                 
             } catch (err) {
-                console.error("相機啟動失敗:", err);
+                console.error("AR系統啟動崩潰原因:", err);
+                // ─── 關鍵修正：將真實錯誤渲染到螢幕上 ───
                 document.getElementById('splash-screen').innerHTML = `
-                    <p class="text-red-500 text-xs text-center px-6">相機啟動異常。<br>請確保瀏覽器有相機權限並重新整理網頁。</p>
+                    <div class="text-center p-6 space-y-2">
+                        <p class="text-red-500 text-sm font-mono font-bold">系統核心異常</p>
+                        <p class="text-zinc-400 text-xs bg-zinc-900/50 p-3 rounded border border-zinc-800 font-mono text-left break-all">
+                            ${err.name || 'Error'}: ${err.message || err}
+                        </p>
+                        <p class="text-zinc-600 text-[11px] pt-4">請確認：<br>1. 網址是否為安全連結 (HTTPS)<br>2. 根目錄下是否有 targets.mind 檔案</p>
+                    </div>
                 `;
             }
         }
@@ -256,7 +266,7 @@
             db.ref(`rooms/${currentRoom}`).on('value', (snapshot) => {
                 const data = snapshot.val();
                 if (data && data.forcedCard) {
-                    db.ref(`rooms/${currentRoom}`).off(); // 接收到訊號就斷開
+                    db.ref(`rooms/${currentRoom}`).off();
                     const imagePath = getBicycleImagePath(data.forcedCard);
                     startRevealAnimation(imagePath);
                 }
@@ -274,22 +284,18 @@
         }
 
         function startRevealAnimation(imagePath) {
-            // 載入魔術師指定的撲克牌圖片
             const textureLoader = new THREE.TextureLoader();
             textureLoader.load(imagePath, (texture) => {
-                // 處理顏色空間，避免撲克牌顏色太暗
                 texture.encoding = THREE.sRGBEncoding;
                 cardMaterial.map = texture;
                 cardMaterial.needsUpdate = true;
                 
-                // 漸現動畫 (Opacity)
                 let opacityVal = 0;
                 const fadeInterval = setInterval(() => {
                     opacityVal += 0.02;
                     if (opacityVal >= 1) {
                         opacityVal = 1;
                         clearInterval(fadeInterval);
-                        // 完全浮現後，停頓 0.5 秒後進行畫面凍結
                         setTimeout(freezeFrame, 500);
                     }
                     cardMaterial.opacity = opacityVal;
@@ -298,11 +304,9 @@
         }
 
         function freezeFrame() {
-            // 停止 Three.js 的畫面刷新
             if (mindarThree && mindarThree.renderer) {
                 mindarThree.renderer.setAnimationLoop(null);
             }
-            // 拔除真實手機相機的串流，把畫面死死凍結在這一刻
             const video = document.querySelector('#robot-camera-view-container video');
             if (video && video.srcObject) {
                 video.srcObject.getTracks().forEach(track => track.stop());
