@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>The Frozen Proof - Sequential Lumina</title>
+    <title>The Frozen Proof - Gallery Edition</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -54,6 +54,15 @@
             user-select: auto !important;
             pointer-events: auto !important;
         }
+
+        /* 頂級畫廊款：極慢速優雅呼吸燈 (2.5秒循環) */
+        .ghost-pulse {
+            animation: ghostPulse 2.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        @keyframes ghostPulse {
+            0%, 100% { opacity: 0.05; }
+            50% { opacity: 0.35; }
+        }
     </style>
 </head>
 <body class="bg-black text-white">
@@ -103,11 +112,11 @@
         }
 
         // ==========================================
-        // 【魔術師端】✨ 序列排隊與即時三態燈號系統
+        // 【魔術師端】序列排隊與即時三態燈號系統
         // ==========================================
-        let currentTargetIndex = 1; // 目前準備發送牌組的觀眾順位
-        let globalTotalPlayers = 0; // 目前房間內連線的總人數
-        let strokes = [];           // 儲存當前手勢軌跡
+        let currentTargetIndex = 1; 
+        let globalTotalPlayers = 0; 
+        let strokes = [];           
         
         function initSequentialMasterMode() {
             if (!baseRoom) {
@@ -126,7 +135,6 @@
                 </div>
             `;
             
-            // 所有人只掃這一個 QR Code
             const spectatorUrl = `${window.location.origin}${window.location.pathname}?room=${baseRoom}`;
             new QRCode(document.getElementById("qrcode"), { text: spectatorUrl, width: 200, height: 200, colorDark : "#ffffff", colorLight : "#000000" });
             
@@ -134,7 +142,6 @@
                 document.getElementById('stealth-curtain').classList.remove('hidden'); 
             });
             
-            // 監聽目前房間內的最新報到人數
             db.ref(`rooms/${baseRoom}/nextIndex`).on('value', (snapshot) => {
                 globalTotalPlayers = snapshot.val() || 0;
                 updateMasterIndicators();
@@ -143,7 +150,6 @@
             setupMasterSequentialGestures();
         }
 
-        // ✨ 核心升級：動態渲染三態弱光指示點 (灰 -> 黃 -> 綠)
         function updateMasterIndicators() {
             const container = document.getElementById('indicators-container');
             if (!container) return;
@@ -151,21 +157,15 @@
             
             for (let i = 1; i <= globalTotalPlayers; i++) {
                 const dot = document.createElement('div');
-                
                 if (i < currentTargetIndex) {
-                    // 1. 已輸入第二筆（發牌成功完成），顯示淡綠色
                     dot.className = "w-2 h-2 rounded-full bg-green-400 opacity-40 transition-all duration-300";
                 } else if (i === currentTargetIndex) {
-                    // 2. 當前正在輸入的觀眾
                     if (strokes.length === 1) {
-                        // 輸入第一筆後，顯示淡黃色
                         dot.className = "w-2 h-2 rounded-full bg-yellow-400 opacity-50 animate-pulse transition-all duration-200";
                     } else {
-                        // 原本/等待中，顯示標準淡灰色
                         dot.className = "w-2 h-2 rounded-full bg-zinc-500 opacity-20 transition-all duration-200";
                     }
                 } else {
-                    // 3. 未來的觀眾，極度微弱的淡灰色（隱密不穿幫）
                     dot.className = "w-1.5 h-1.5 rounded-full bg-zinc-700 opacity-10";
                 }
                 container.appendChild(dot);
@@ -179,7 +179,7 @@
             
             curtain.addEventListener('touchstart', (e) => {
                 if (e.touches.length === 1) touchStartPos = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-                pressTimer = setTimeout(() => resetSequentialSystem(), 3000); // 長按 3 秒重設
+                pressTimer = setTimeout(() => resetSequentialSystem(), 3000); 
             });
             
             curtain.addEventListener('touchmove', () => clearTimeout(pressTimer));
@@ -190,7 +190,6 @@
                 touchStartPos = null; let dx = x2 - x1, dy = y2 - y1;
                 let now = Date.now();
                 
-                // 快速雙擊螢幕中央：強制作弊目前順位為 Joker
                 if (now - lastTapTime < 300 && Math.sqrt(dx*dx + dy*dy) < 15) { 
                     sendForcedCardSequential("Joker"); strokes = []; return; 
                 }
@@ -207,7 +206,6 @@
                 
                 if (strokes.length === 0) {
                     strokes.push({ edge, dir });
-                    // 🔥【亮黃燈觸發】：第一筆劃輸入完成，立刻刷新燈號為淡黃色
                     updateMasterIndicators();
                     if (navigator.vibrate) navigator.vibrate(40);
                 } else {
@@ -231,16 +229,12 @@
         }
 
         function sendForcedCardSequential(cardName) {
-            // 將牌發送給當前順位的玩家路徑下
             db.ref(`rooms/${baseRoom}/cards/${currentTargetIndex}`).set({ 
                 forcedCard: cardName, 
                 timestamp: firebase.database.ServerValue.TIMESTAMP 
             });
-            
-            // 🔥【亮綠燈與遞進觸發】：發牌成功，指標跳下一位，updateMasterIndicators 會自動將上一位變綠、新的一位變灰
             currentTargetIndex++;
             updateMasterIndicators();
-            
             if (navigator.vibrate) navigator.vibrate([70, 40, 70]);
         }
 
@@ -253,11 +247,11 @@
         }
 
         // ==========================================
-        // 【觀眾端】✨ 時間差動態領號與 AR 淬煉
+        // 【觀眾端】✨ 頂級藝術畫廊排隊視覺微調
         // ==========================================
         let mindarThree = null; let cardMaterial = null; let cardPlane = null; let scene = null;
         let hasTriggered = false; let forcedCardName = null; let chosenFacingMode = 'environment';
-        let myPlayerIndex = null; // 本機觀眾獲得的專屬隊伍序號
+        let myPlayerIndex = null; 
 
         const originalGetUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
         navigator.mediaDevices.getUserMedia = function(constraints) {
@@ -272,13 +266,25 @@
         };
 
         function initSpectatorSplash() {
+            // ✨ 完美注入：頂級文青藝術排版線條
             appContainer.innerHTML = `
-                <div id="splash-screen" class="fixed inset-0 w-screen h-screen bg-black flex flex-col items-center justify-center z-[99999] cursor-pointer p-8">
-                    <div class="text-center space-y-3 pointer-events-none">
-                        <p class="text-zinc-700 text-xs tracking-[0.4em] uppercase font-light animate-pulse">The Frozen Proof</p>
-                        <p class="text-zinc-400 text-sm font-light tracking-wide">點擊螢幕以連結內在感知</p>
+                <div id="splash-screen" class="fixed inset-0 w-screen h-screen bg-black flex flex-col justify-between items-center z-[99999] cursor-pointer py-24 px-8 select-none">
+                    <div></div>
+                    
+                    <div id="splash-text-container" class="text-center space-y-5 transition-all duration-500 ease-in-out">
+                        <h1 class="text-zinc-200 text-lg sm:text-xl font-light tracking-[0.35em] font-serif pr-[-0.35em]">
+                            記憶留痕 ─ The Frozen Proof
+                        </h1>
+                        <p class="text-zinc-500 text-xs font-light tracking-[0.15em] leading-relaxed">
+                            照片，讓我們擁有凍結時光的能力
+                        </p>
+                    </div>
+                    
+                    <div id="splash-action-hint" class="ghost-pulse text-zinc-600 text-[10px] tracking-[0.4em] uppercase font-light">
+                        ── 輕觸螢幕 ‧ 開始記錄 ──
                     </div>
                 </div>
+                
                 <div id="robot-camera-view-container"></div>
                 <button id="camera-toggle-btn" class="fixed bottom-8 right-8 z-[99] bg-black/40 backdrop-blur-md border border-zinc-800/80 text-zinc-300 w-12 h-12 rounded-full shadow-2xl flex items-center justify-center text-lg active:scale-90 transition-all hidden">🔄</button>
                 <div id="countdown-overlay" class="fixed inset-0 z-50 flex items-center justify-center bg-black/10 pointer-events-none hidden">
@@ -288,15 +294,27 @@
             `;
             
             document.getElementById('splash-screen').addEventListener('click', () => {
-                document.getElementById('splash-screen').innerHTML = `<p class="text-zinc-500 text-sm font-light tracking-widest animate-pulse">正在向系統請求通訊證...</p>`;
+                // 🔥 觸發神聖見證：立刻淡出動作提示，並將中間文案優雅替換為指定見證語
+                const actionHint = document.getElementById('splash-action-hint');
+                if (actionHint) actionHint.remove();
+                
+                const textContainer = document.getElementById('splash-text-container');
+                if (textContainer) {
+                    textContainer.className = "text-center space-y-5 opacity-40 scale-95 transition-all duration-700";
+                    textContainer.innerHTML = `
+                        <p class="text-zinc-400 text-sm font-light tracking-[0.3em] animate-pulse">
+                            尋求你的見證.........
+                        </p>
+                    `;
+                }
+                
                 // 利用 Firebase 事務(Transaction) 依點擊時間差動態抽取號碼牌
                 db.ref(`rooms/${baseRoom}/nextIndex`).transaction((currentValue) => {
                     return (currentValue || 0) + 1;
                 }, (error, committed, snapshot) => {
                     if (committed) {
-                        myPlayerIndex = snapshot.val(); // 成功取得專屬順位 (1, 2, 3...)
-                        document.getElementById('splash-screen').innerHTML = `<p class="text-zinc-500 text-sm font-light tracking-widest animate-pulse">認證成功！傳感器啟動中...</p>`;
-                        setTimeout(() => { startThreeCameraAR(); }, 50);
+                        myPlayerIndex = snapshot.val(); 
+                        setTimeout(() => { startThreeCameraAR(); }, 1200); // 稍微延遲，讓觀眾完整看完見證文字，儀式感最足
                     }
                 });
             });
@@ -354,7 +372,6 @@
         }
 
         function startDatabaseListener() {
-            // 觀眾端精準切入：只監聽屬於自己領到的專屬號碼牌資料
             db.ref(`rooms/${baseRoom}/cards/${myPlayerIndex}`).on('value', (snapshot) => {
                 const data = snapshot.val();
                 if (data && data.forcedCard) {
@@ -421,7 +438,7 @@
                         bakeScreenToSaveableImage();
                     }
                     cardMaterial.opacity = opacityVal;
-                }, 40); // 4秒漸顯
+                }, 40); 
             });
         }
 
