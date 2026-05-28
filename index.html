@@ -3,14 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>The Frozen Proof - Decoupled Edition</title>
+    <title>The Frozen Proof - Final</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
     
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://unpkg.com/three@0.128.0/build/three.module.js"
+        }
+      }
+    </script>
 
     <style>
         html, body {
@@ -47,7 +53,7 @@
     <div id="app-container" class="w-full h-full bg-black"></div>
 
     <script>
-        // ─── 🚨 全域崩潰監聽器（防止任何死黑裝死行為） ───
+        // ─── 全域 my-error 監聽器 ───
         window.addEventListener('error', function(e) {
             const app = document.getElementById('app-container');
             if (app) {
@@ -89,7 +95,7 @@
         }
 
         // ==========================================
-        // 【魔術師端】純淨、無AR干擾，絕對不黑屏
+        // 【魔術師端】
         // ==========================================
         function initMasterMode() {
             if (!currentRoom) {
@@ -195,7 +201,7 @@
         }
 
         // ==========================================
-        // 【觀眾端】動態按需引入，保障系統穩定性
+        // 【觀眾端】
         // ==========================================
         let mindarThree = null;
         let cardMaterial = null;
@@ -226,7 +232,11 @@
 
         async function startThreeCameraAR() {
             try {
-                // ─── ✨ 核心進化：動態非同步引入，不拖累魔術師端 ───
+                // ─── ✨ 關鍵修正 2：動態載入 three 模組並綁定到全域 ───
+                const threeModule = await import("three");
+                window.THREE = threeModule; 
+
+                // ─── ✨ 關鍵修正 3：此時 MindAR 內部就能順利解析 'three' ───
                 const mindarModule = await import("https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-three.prod.js");
                 const MindARThree = mindarModule.MindARThree;
 
@@ -245,7 +255,7 @@
                 const anchor = mindarThree.addAnchor(0);
                 anchor.group.add(cardPlane);
 
-                // 喚醒相機
+                // 喚醒相機權限
                 await mindarThree.start();
                 
                 const splash = document.getElementById('splash-screen');
