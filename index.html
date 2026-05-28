@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>The Frozen Proof - Fixed</title>
+    <title>The Frozen Proof - Module Edition</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -11,7 +11,6 @@
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-three.prod.js"></script>
 
     <style>
         html, body {
@@ -47,7 +46,10 @@
 
     <div id="app-container" class="w-full h-full bg-black"></div>
 
-    <script>
+    <script type="module">
+        // 從 CDN 以模組形式直接引入核心，徹底解決 undefined 問題
+        import { MindARThree } from "https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-three.prod.js";
+
         // --- 1. FIREBASE 初始化 ---
         const firebaseConfig = {
             apiKey: "AIzaSyAKrHMMbS6RHzOUgduseEOvUzjKA1YWLo",
@@ -76,7 +78,7 @@
         }
 
         // ==========================================
-        // 【魔術師端】
+        // 【魔術師端】功能完美保留
         // ==========================================
         function initMasterMode() {
             if (!currentRoom) {
@@ -182,7 +184,7 @@
         }
 
         // ==========================================
-        // 【觀眾端】修正關鍵命名空間
+        // 【觀眾端】優化後的模組化 AR 啟動機制
         // ==========================================
         let mindarThree = null;
         let cardMaterial = null;
@@ -213,8 +215,8 @@
 
         async function startThreeCameraAR() {
             try {
-                // ─── ✨ 核心修正：移除 .IMAGE ───
-                mindarThree = new window.MINDAR.MindARThree({
+                // ─── ✨ 核心修正：直接執行 import 進來的建構式 ───
+                mindarThree = new MindARThree({
                     container: document.getElementById('robot-camera-view-container'),
                     imageTargetSrc: './targets.mind',
                     uiLoading: "no", uiScanning: "no", uiError: "no"
@@ -229,6 +231,7 @@
                 const anchor = mindarThree.addAnchor(0);
                 anchor.group.add(cardPlane);
 
+                // 正式要求權限並開啟相機
                 await mindarThree.start();
                 
                 const splash = document.getElementById('splash-screen');
