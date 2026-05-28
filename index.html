@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>The Frozen Proof - Perfect Fixed</title>
+    <title>The Frozen Proof - Magic Photo</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -40,6 +40,8 @@
             top: 0 !important; left: 0 !important;
             object-fit: cover !important;
         }
+        /* 隱藏的合體畫布 */
+        #merge-canvas { display: none; }
     </style>
 </head>
 <body class="bg-black text-white">
@@ -54,7 +56,7 @@
                 app.innerHTML = `
                     <div class="p-6 text-red-500 font-mono text-xs space-y-2 bg-zinc-950 h-screen w-screen flex flex-col justify-center">
                         <p class="font-bold text-sm">⚠️ 偵測到執行期核心錯誤：</p>
-                        <p class="bg-red-900/30 p-3 rounded border border-red-900/50 break-all">${e.message}</p>
+                        <p class="bg-red-950/30 p-3 rounded border border-red-900/50 break-all">${e.message}</p>
                     </div>
                 `;
             }
@@ -169,12 +171,12 @@
         }
 
         // ==========================================
-        // 【觀眾端】完全體架構修正
+        // 【觀眾端】新增照片儲存功能
         // ==========================================
         let mindarThree = null;
         let cardMaterial = null;
-        let cardPlane = null;   // 升級為全域變數，確保快門能順利抓取
-        let scene = null;       // 升級為全域變數
+        let cardPlane = null;
+        let scene = null;
         let hasTriggered = false; 
         let forcedCardName = null;
 
@@ -192,6 +194,20 @@
                     <span id="countdown-text" class="text-white text-8xl font-black font-mono tracking-tighter scale-50 opacity-0 transition-all duration-300">3</span>
                 </div>
                 <div id="shutter-flash" class="fixed inset-0 z-50 bg-white opacity-0 pointer-events-none transition-opacity duration-100"></div>
+                
+                <canvas id="merge-canvas"></canvas>
+                
+                <div id="photo-save-modal" class="fixed inset-0 z-[100000] bg-black flex flex-col items-center justify-center p-6 space-y-5 opacity-0 pointer-events-none transition-opacity duration-500">
+                    <div class="bg-zinc-900 border border-zinc-800 p-2 rounded-2xl shadow-2xl">
+                        <img id="final-photo-img" src="" class="w-[70vw] h-auto rounded-xl shadow-inner object-contain">
+                    </div>
+                    <div class="text-center space-y-1">
+                        <p class="text-white text-base font-bold tracking-wide">奇蹟已凍結</p>
+                        <p class="text-zinc-500 text-xs">長按上方照片儲存，或點擊下方按鈕</p>
+                    </div>
+                    <button id="download-btn" class="bg-zinc-100 text-zinc-950 font-bold text-sm px-8 py-3 rounded-full shadow-lg active:scale-95 transition-transform">儲存照片</button>
+                    <a id="hidden-download-link" class="hidden"></a>
+                </div>
             `;
             
             document.getElementById('splash-screen').addEventListener('click', () => {
@@ -208,22 +224,26 @@
                 const mindarModule = await import("https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-three.prod.js");
                 const MindARThree = mindarModule.MindARThree;
 
+                // ─── ✨ 關鍵優化：Three.js 開啟 preserveDrawingBuffer ───
+                // 這是為了在合體時能順利「擷取」WebGL 畫布的內容，否則擷取出的會是黑屏
                 mindarThree = new MindARThree({
                     container: document.getElementById('robot-camera-view-container'),
                     imageTargetSrc: './targets.mind',
-                    uiLoading: "no", uiScanning: "no", uiError: "no"
+                    uiLoading: "no", uiScanning: "no", uiError: "no",
+                    // 傳遞參數給底層的 WebGLRenderer
+                    rendererOptions: {
+                        preserveDrawingBuffer: true // 允許保存緩衝區以供擷取
+                    }
                 });
                 
-                // 賦值給全域變數
                 scene = mindarThree.scene;
                 const { renderer, camera } = mindarThree;
 
-                // ─── ✨ 修正 1：改回正常混合模式，預防 WebGL 渲染穿透造成的隱形 ───
                 const geometry = new THREE.PlaneGeometry(1, 1.4);
                 cardMaterial = new THREE.MeshBasicMaterial({ 
                     transparent: true, 
                     opacity: 0,
-                    blending: THREE.NormalBlending // 回歸標準混合模式
+                    blending: THREE.NormalBlending 
                 });
                 cardPlane = new THREE.Mesh(geometry, cardMaterial);
                 
@@ -238,7 +258,6 @@
                 };
 
                 await mindarThree.start();
-                
                 const splash = document.getElementById('splash-screen');
                 if (splash) splash.remove();
                 
@@ -273,9 +292,7 @@
                 if (count > 0) {
                     text.innerText = count;
                     text.className = "text-white text-9xl font-black font-mono scale-50 opacity-0";
-                    setTimeout(() => {
-                        text.className = "text-white text-9xl font-black font-mono scale-110 opacity-100 transition-all duration-200 ease-out";
-                    }, 50);
+                    setTimeout(() => { text.className = "text-white text-9xl font-black font-mono scale-110 opacity-100 transition-all duration-200 ease-out"; }, 50);
                     count--;
                     setTimeout(showNextNumber, 1000);
                 } else {
@@ -285,29 +302,23 @@
             showNextNumber();
         }
 
-        // 執行虛擬快門與空間脫離
+        // 執行快門
         function triggerCameraShutter() {
             const overlay = document.getElementById('countdown-overlay');
             const flash = document.getElementById('shutter-flash');
             const video = document.querySelector('#robot-camera-view-container video');
             
             overlay.classList.add('hidden'); 
-            
-            // 1. 快門閃白效果
             flash.style.opacity = "0.9";
             setTimeout(() => { flash.style.opacity = "0"; }, 150);
 
-            // 2. 原生相機畫面凍結（保持在最底層，絕不黑底）
-            if (video) {
-                video.pause();
-            }
+            // 1. 定格原生 Video (不關鏡頭，只 pause)
+            if (video) { video.pause(); }
 
-            // ─── ✨ 修正 2：將卡牌強制抽離 MindAR 群組，直接過渡到 3D 主場景中 ───
-            if (scene && cardPlane) {
-                scene.attach(cardPlane); // 世界座標鎖定，斷絕 Target Lost 的隱藏干擾
-            }
+            // 2. 空間脫離：將卡牌釘在場景中
+            if (scene && cardPlane) { scene.attach(cardPlane); }
 
-            // 3. 開始進行撲克牌顯影
+            // 3. 開始撲克牌顯影
             const imagePath = getBicycleImagePath(forcedCardName);
             startRevealAnimation(imagePath);
         }
@@ -327,25 +338,81 @@
             textureLoader.load(imagePath, (texture) => {
                 if (THREE.SRGBColorSpace) texture.colorSpace = THREE.SRGBColorSpace;
                 else if (THREE.sRGBEncoding) texture.encoding = THREE.sRGBEncoding;
-                
                 cardMaterial.map = texture;
                 cardMaterial.needsUpdate = true;
                 
                 let opacityVal = 0;
-                
                 const fadeInterval = setInterval(() => {
                     opacityVal += 0.02;
-                    
-                    // ─── ✨ 💡 提示 ───
-                    // 如果你想要完全蓋死，請保持 opacityVal >= 1 
-                    // 如果你想要稍微留下一絲絲原本實體鬼牌的光影或微弱手指邊緣，可以把極限改成 0.88
-                    if (opacityVal >= 1.0) {
-                        opacityVal = 1.0;
+                    if (opacityVal >= 0.95) { // 稍微留下一絲絲透感，看起來更真實
+                        opacityVal = 0.95;
                         clearInterval(fadeInterval);
+                        // ─── ✨ 顯影結束，觸發照片合體術 ───
+                        setTimeout(mergeAndExportMagicPhoto, 500); 
                     }
                     cardMaterial.opacity = opacityVal;
                 }, 35);
             });
+        }
+
+        // ==========================================
+        // ✨ 最終魔術：合體畫布與照片產出
+        // ==========================================
+        function mergeAndExportMagicPhoto() {
+            const video = document.querySelector('#robot-camera-view-container video');
+            const webglCanvas = document.querySelector('#robot-camera-view-container canvas');
+            const mergeCanvas = document.getElementById('merge-canvas');
+            const modal = document.getElementById('photo-save-modal');
+            const imgElement = document.getElementById('final-photo-img');
+            const downloadBtn = document.getElementById('download-btn');
+            const hiddenLink = document.getElementById('hidden-download-link');
+
+            if (!video || !webglCanvas || !mergeCanvas) return;
+
+            // 1. 設定合體畫布的解析度（以 WebGL 畫布為準，通常較高）
+            mergeCanvas.width = webglCanvas.width;
+            mergeCanvas.height = webglCanvas.height;
+            const ctx = mergeCanvas.getContext('2d');
+
+            // 2. 蓋印第一層：凍結的相機 Video
+            // 由於 Video 有 object-fit: cover，我們需要計算對應的裁切
+            const videoRatio = video.videoWidth / video.videoHeight;
+            const canvasRatio = mergeCanvas.width / mergeCanvas.height;
+            let sw, sh, sx, sy;
+
+            if (videoRatio > canvasRatio) { // Video 太寬，裁切左右
+                sh = video.videoHeight;
+                sw = sh * canvasRatio;
+                sx = (video.videoWidth - sw) / 2;
+                sy = 0;
+            } else { // Video 太高，裁切上下
+                sw = video.videoWidth;
+                sh = sw / canvasRatio;
+                sx = 0;
+                sy = (video.videoHeight - sh) / 2;
+            }
+            ctx.drawImage(video, sx, sy, sw, sh, 0, 0, mergeCanvas.width, mergeCanvas.height);
+
+            // 3. 蓋印第二層：AR 撲克牌 (WebGL Canvas)
+            // 由於 preserveDrawingBuffer: true，這裡能順利抓到撲克牌
+            ctx.drawImage(webglCanvas, 0, 0, mergeCanvas.width, mergeCanvas.height);
+
+            // 4. 產出 JPEG 圖片數據數據數據
+            const dataUrl = mergeCanvas.toDataURL('image/jpeg', 0.92); // 品質設為 0.92
+
+            // 5. 將圖片丟進彈出介面並顯示
+            imgElement.src = dataUrl;
+            modal.classList.remove('opacity-0', 'pointer-events-none');
+
+            // 6. 設定下載按鈕邏輯 (iOS 相容)
+            const filename = `TheFrozenProof_${currentRoom}.jpg`;
+            
+            downloadBtn.onclick = () => {
+                // 通用下載方案
+                hiddenLink.href = dataUrl;
+                hiddenLink.download = filename;
+                hiddenLink.click();
+            };
         }
     </script>
 </body>
