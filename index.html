@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>The Frozen Proof - Magic Reveal</title>
+    <title>The Frozen Proof - Perfect Fixed</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -39,13 +39,6 @@
             width: 100vw !important; height: 100vh !important;
             top: 0 !important; left: 0 !important;
             object-fit: cover !important;
-        }
-        /* 用於定格相機畫面的隱藏畫布 */
-        #freeze-canvas {
-            position: absolute; inset: 0;
-            width: 100vw; height: 100vh;
-            object-fit: cover; z-index: 11;
-            display: none;
         }
     </style>
 </head>
@@ -95,7 +88,7 @@
         }
 
         // ==========================================
-        // 【魔術師端】（保持不變）
+        // 【魔術師端】（穩定服役中）
         // ==========================================
         function initMasterMode() {
             if (!currentRoom) {
@@ -176,11 +169,13 @@
         }
 
         // ==========================================
-        // 【觀眾端】核心大升級
+        // 【觀眾端】完全體架構修正
         // ==========================================
         let mindarThree = null;
         let cardMaterial = null;
-        let hasTriggered = false; // 防止重複觸發流程
+        let cardPlane = null;   // 升級為全域變數，確保快門能順利抓取
+        let scene = null;       // 升級為全域變數
+        let hasTriggered = false; 
         let forcedCardName = null;
 
         function initSpectatorSplash() {
@@ -191,9 +186,8 @@
                         <p class="text-zinc-400 text-sm font-light tracking-wide">點擊螢幕以連結內在感知</p>
                     </div>
                 </div>
-                <div id="robot-camera-view-container">
-                    <canvas id="freeze-canvas"></canvas>
-                </div>
+                <div id="robot-camera-view-container"></div>
+                
                 <div id="countdown-overlay" class="fixed inset-0 z-50 flex items-center justify-center bg-black/10 pointer-events-none hidden">
                     <span id="countdown-text" class="text-white text-8xl font-black font-mono tracking-tighter scale-50 opacity-0 transition-all duration-300">3</span>
                 </div>
@@ -220,23 +214,23 @@
                     uiLoading: "no", uiScanning: "no", uiError: "no"
                 });
                 
-                const {renderer, scene, camera} = mindarThree;
+                // 賦值給全域變數
+                scene = mindarThree.scene;
+                const { renderer, camera } = mindarThree;
 
-                // ─── ✨ 關鍵優化 3：使用正片疊底混合，完美保留手指與現場光影 ───
+                // ─── ✨ 修正 1：改回正常混合模式，預防 WebGL 渲染穿透造成的隱形 ───
                 const geometry = new THREE.PlaneGeometry(1, 1.4);
                 cardMaterial = new THREE.MeshBasicMaterial({ 
                     transparent: true, 
                     opacity: 0,
-                    blending: THREE.MultiplyBlending // 光影融合關鍵
+                    blending: THREE.NormalBlending // 回歸標準混合模式
                 });
-                const cardPlane = new THREE.Mesh(geometry, cardMaterial);
+                cardPlane = new THREE.Mesh(geometry, cardMaterial);
                 
                 const anchor = mindarThree.addAnchor(0);
                 anchor.group.add(cardPlane);
 
-                // 監聽辨識成功事件
                 anchor.onTargetFound = () => {
-                    // 必須同時滿足「魔術師已下指令」且「尚未觸發過」
                     if (forcedCardName && !hasTriggered) {
                         hasTriggered = true;
                         runMagicSequence();
@@ -259,7 +253,6 @@
             }
         }
 
-        // 監聽魔術師訊號，提早預載卡牌資料，但不立刻顯示
         function startDatabaseListener() {
             db.ref(`rooms/${currentRoom}`).on('value', (snapshot) => {
                 const data = snapshot.val();
@@ -270,68 +263,51 @@
             });
         }
 
-        // ==========================================
-        // ✨ 新流程控制核心邏輯 (倒數 -> 拍照 -> 顯影)
-        // ==========================================
         function runMagicSequence() {
             const overlay = document.getElementById('countdown-overlay');
             const text = document.getElementById('countdown-text');
             overlay.classList.remove('hidden');
 
             let count = 3;
-            
             function showNextNumber() {
                 if (count > 0) {
                     text.innerText = count;
-                    // 動態放大與淡入效果
                     text.className = "text-white text-9xl font-black font-mono scale-50 opacity-0";
                     setTimeout(() => {
                         text.className = "text-white text-9xl font-black font-mono scale-110 opacity-100 transition-all duration-200 ease-out";
                     }, 50);
-                    
                     count--;
                     setTimeout(showNextNumber, 1000);
                 } else {
-                    // 倒數結束，執行拍照定格
                     triggerCameraShutter();
                 }
             }
             showNextNumber();
         }
 
-        // 執行虛擬快門與定格畫面捕捉
+        // 執行虛擬快門與空間脫離
         function triggerCameraShutter() {
             const overlay = document.getElementById('countdown-overlay');
             const flash = document.getElementById('shutter-flash');
             const video = document.querySelector('#robot-camera-view-container video');
-            const canvas = document.getElementById('freeze-canvas');
             
-            overlay.classList.add('hidden'); // 隱藏倒數 UI
+            overlay.classList.add('hidden'); 
             
-            // 1. 瞬間閃白效果
+            // 1. 快門閃白效果
             flash.style.opacity = "0.9";
             setTimeout(() => { flash.style.opacity = "0"; }, 150);
 
-            // 2. 將當下的相機畫面完全臨摹捕捉到 Canvas 上
-            if (video && canvas) {
-                canvas.width = video.videoWidth;
-                canvas.height = video.videoHeight;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                canvas.style.display = 'block'; // 顯示定格背景
+            // 2. 原生相機畫面凍結（保持在最底層，絕不黑底）
+            if (video) {
+                video.pause();
             }
 
-            // 3. 停止 MindAR 的動態偵測（鎖定 WebGL 卡牌的空間矩陣，不讓它飄走）
-            if (mindarThree) {
-                // 註：不呼叫 mindarThree.stop() 以防渲染器被銷毀，我們只讓它的更新迴圈停下即可
-                // 停止相機數據輸入，藉此達到定格
-                if(video && video.srcObject) {
-                    // 我們不關閉 track，只讓它暫停更新
-                    video.pause();
-                }
+            // ─── ✨ 修正 2：將卡牌強制抽離 MindAR 群組，直接過渡到 3D 主場景中 ───
+            if (scene && cardPlane) {
+                scene.attach(cardPlane); // 世界座標鎖定，斷絕 Target Lost 的隱藏干擾
             }
 
-            // 4. 定格完成後，開始進行撲克牌緩緩「靈異顯影」
+            // 3. 開始進行撲克牌顯影
             const imagePath = getBicycleImagePath(forcedCardName);
             startRevealAnimation(imagePath);
         }
@@ -356,15 +332,19 @@
                 cardMaterial.needsUpdate = true;
                 
                 let opacityVal = 0;
-                // 緩緩變牌：每 40 毫秒增加 0.015，大約花 2.5 秒完美淡入顯影
+                
                 const fadeInterval = setInterval(() => {
-                    opacityVal += 0.015;
-                    if (opacityVal >= 1) {
-                        opacityVal = 1;
+                    opacityVal += 0.02;
+                    
+                    // ─── ✨ 💡 提示 ───
+                    // 如果你想要完全蓋死，請保持 opacityVal >= 1 
+                    // 如果你想要稍微留下一絲絲原本實體鬼牌的光影或微弱手指邊緣，可以把極限改成 0.88
+                    if (opacityVal >= 1.0) {
+                        opacityVal = 1.0;
                         clearInterval(fadeInterval);
                     }
                     cardMaterial.opacity = opacityVal;
-                }, 40);
+                }, 35);
             });
         }
     </script>
