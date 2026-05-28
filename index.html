@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>The Frozen Proof - Ultimate Pure</title>
+    <title>The Frozen Proof - Pure Image Mirage</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -40,6 +40,20 @@
             top: 0 !important; left: 0 !important;
             object-fit: cover !important;
         }
+
+        /* ✨ 讓最終生成的照片允許原生長按儲存選單彈出 */
+        .saveable-magic-photo {
+            position: fixed !important;
+            inset: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            object-fit: cover !important;
+            z-index: 999999 !important;
+            -webkit-touch-callout: default !important; /* 關鍵：允許 iOS 彈出儲存選單 */
+            -webkit-user-select: auto !important;     /* 關鍵：允許選取行為 */
+            user-select: auto !important;
+            pointer-events: auto !important;
+        }
     </style>
 </head>
 <body class="bg-black text-white">
@@ -54,7 +68,7 @@
                 app.innerHTML = `
                     <div class="p-6 text-red-500 font-mono text-xs space-y-2 bg-zinc-950 h-screen w-screen flex flex-col justify-center">
                         <p class="font-bold text-sm">⚠️ 偵測到執行期核心錯誤：</p>
-                        <p class="bg-red-950/30 p-3 rounded border border-red-900/50 break-all">${e.message}</p>
+                        <p class="bg-red-900/30 p-3 rounded border border-red-900/50 break-all">${e.message}</p>
                     </div>
                 `;
             }
@@ -88,7 +102,7 @@
         }
 
         // ==========================================
-        // 【魔術師端】✨ 修正 1：完全移除 room 提示字樣
+        // 【魔術師端】
         // ==========================================
         function initMasterMode() {
             if (!currentRoom) {
@@ -168,7 +182,7 @@
         }
 
         // ==========================================
-        // 【觀眾端】✨ 修正：字串攔截追蹤、鏡頭切換、純淨定格
+        // 【觀眾端】
         // ==========================================
         let mindarThree = null;
         let cardMaterial = null;
@@ -176,14 +190,13 @@
         let scene = null;
         let hasTriggered = false; 
         let forcedCardName = null;
-        let chosenFacingMode = 'environment'; // 預設優先進入後置鏡頭
+        let chosenFacingMode = 'environment';
 
-        // 🔥【關鍵修復】：強制回傳 MindAR 能識別的「純字串」，徹底修復辨識失敗的問題
         const originalGetUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
         navigator.mediaDevices.getUserMedia = function(constraints) {
             if (constraints && constraints.video) {
                 if (typeof constraints.video === 'object') {
-                    constraints.video.facingMode = chosenFacingMode; // 必須是字串！
+                    constraints.video.facingMode = chosenFacingMode; 
                 } else {
                     constraints.video = { facingMode: chosenFacingMode };
                 }
@@ -229,7 +242,9 @@
                 mindarThree = new MindARThree({
                     container: document.getElementById('robot-camera-view-container'),
                     imageTargetSrc: './targets.mind',
-                    uiLoading: "no", uiScanning: "no", uiError: "no"
+                    uiLoading: "no", uiScanning: "no", uiError: "no",
+                    // 🔥【核心技術開啟】：允許保留畫布快取，確保最後一刻截圖順暢不留黑洞
+                    rendererOptions: { preserveDrawingBuffer: true } 
                 });
                 
                 scene = mindarThree.scene;
@@ -255,13 +270,10 @@
 
                 await mindarThree.start();
                 
-                // 移除開場蓋板
                 const splash = document.getElementById('splash-screen');
                 if (splash) splash.remove();
                 
-                // 顯示並綁定右下角切換鏡頭按鈕
                 setupCameraToggleButton();
-                
                 startDatabaseListener();
                 
                 renderer.setAnimationLoop(() => {
@@ -273,7 +285,6 @@
             }
         }
 
-        // ✨ 修正 3：動態重啟 AR 鏡頭切換邏輯
         function setupCameraToggleButton() {
             const toggleBtn = document.getElementById('camera-toggle-btn');
             if (!toggleBtn) return;
@@ -285,14 +296,10 @@
                 
                 if (mindarThree) {
                     await mindarThree.stop();
-                    // 清空容器，防止殘留舊的 video 或 canvas 標籤
                     document.getElementById('robot-camera-view-container').innerHTML = '';
                 }
                 
-                // 在 environment (後置) 與 user (前置) 之間切換
                 chosenFacingMode = (chosenFacingMode === 'environment') ? 'user' : 'environment';
-                
-                // 重新初始化與啟動
                 await startThreeCameraAR();
                 toggleBtn.classList.remove('pointer-events-none', 'opacity-50');
             };
@@ -309,7 +316,6 @@
         }
 
         function runMagicSequence() {
-            // 進入魔術倒數，立刻蒸發右下角的鏡頭切換按鈕，不留痕跡
             const toggleBtn = document.getElementById('camera-toggle-btn');
             if (toggleBtn) toggleBtn.remove();
 
@@ -358,9 +364,6 @@
             return `${basePath}${suitMap[suitSign]}_${point}.png`.toLowerCase();
         }
 
-        // ==========================================
-        // ✨ 修正 2 & 3：變牌時間延長至 4 秒，且無干擾死定格
-        // ==========================================
         function startRevealAnimation(imagePath) {
             const textureLoader = new THREE.TextureLoader();
             textureLoader.load(imagePath, (texture) => {
@@ -371,19 +374,70 @@
                 
                 let opacityVal = 0;
                 
-                // 40 毫秒增加 0.01 執行 100 次，總計剛好 4000 毫秒（4 秒整）
                 const fadeInterval = setInterval(() => {
                     opacityVal += 0.01;
                     if (opacityVal >= 1.0) {
                         opacityVal = 1.0;
                         clearInterval(fadeInterval);
                         
-                        // 這裡已移除所有儲存功能與 UI 提示。
-                        // 畫面將會乾乾淨淨、完美死定格在奇蹟發生的一幕，藝術感拉滿！
+                        // 🔥【時空融合成像術】：變牌動畫徹底結束，悄悄將畫面轉為真正的靜態照片
+                        bakeScreenToSaveableImage();
                     }
                     cardMaterial.opacity = opacityVal;
                 }, 40);
             });
+        }
+
+        // ==========================================
+        // ✨ 新增核心：將 Canvas 融合成純圖片，解鎖原生長按
+        // ==========================================
+        function bakeScreenToSaveableImage() {
+            const video = document.querySelector('#robot-camera-view-container video');
+            const webglCanvas = document.querySelector('#robot-camera-view-container canvas');
+            
+            if (!video || !webglCanvas) return;
+
+            // 建立一個與螢幕完全同寬高的臨時 2D 畫布
+            const finalCanvas = document.createElement('canvas');
+            finalCanvas.width = webglCanvas.width;
+            finalCanvas.height = webglCanvas.height;
+            const ctx = finalCanvas.getContext('2d');
+
+            // 1. 焊接底層：相機被凍結的那一影格 (完美對應 object-fit: cover)
+            const videoRatio = video.videoWidth / video.videoHeight;
+            const canvasRatio = finalCanvas.width / finalCanvas.height;
+            let sw, sh, sx, sy;
+            if (videoRatio > canvasRatio) {
+                sh = video.videoHeight; sw = sh * canvasRatio;
+                sx = (video.videoWidth - sw) / 2; sy = 0;
+            } else {
+                sw = video.videoWidth; sh = sw / canvasRatio;
+                sx = 0; sy = (video.videoHeight - sh) / 2;
+            }
+            ctx.drawImage(video, sx, sy, sw, sh, 0, 0, finalCanvas.width, finalCanvas.height);
+
+            // 2. 焊接頂層：當下完全顯影的 3D 撲克牌 (強迫進行最後同步渲染)
+            if (mindarThree) {
+                mindarThree.renderer.render(mindarThree.scene, mindarThree.camera);
+            }
+            ctx.drawImage(webglCanvas, 0, 0, finalCanvas.width, finalCanvas.height);
+
+            // 3. 淬煉成標準 JPEG 圖片數據
+            const dataUrl = finalCanvas.toDataURL('image/jpeg', 0.95);
+
+            // 4. 生成真・IMG 標籤，覆蓋全螢幕，並賦予專屬特殊觸控 class
+            const resultImg = document.createElement('img');
+            resultImg.src = dataUrl;
+            resultImg.className = 'saveable-magic-photo';
+            document.getElementById('app-container').appendChild(resultImg);
+
+            // 5. ⚡【神蹟收尾】：立刻將背景實體 AR 運算模組與硬體相機徹底關閉！
+            // 這會讓手機上方的相機隱私錄製燈號（綠點）瞬間熄滅，但眼前的相片卻永久留存。
+            if (mindarThree) {
+                mindarThree.stop();
+                const container = document.getElementById('robot-camera-view-container');
+                if (container) container.innerHTML = '';
+            }
         }
     </script>
 </body>
