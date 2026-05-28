@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>The Frozen Proof - Final Resolution</title>
+    <title>The Frozen Proof - Absolute Fixed</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -13,8 +13,8 @@
     <script type="importmap">
       {
         "imports": {
-          "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-          "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+          "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+          "three/addons/renderers/CSS3DRenderer.js": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/renderers/CSS3DRenderer.js"
         }
       }
     </script>
@@ -54,7 +54,7 @@
     <div id="app-container" class="w-full h-full bg-black"></div>
 
     <script>
-        // ─── 全域崩潰監聽器 ───
+        // 全域防裝死監聽器
         window.addEventListener('error', function(e) {
             const app = document.getElementById('app-container');
             if (app) {
@@ -96,7 +96,7 @@
         }
 
         // ==========================================
-        // 【魔術師端】純淨無瑕
+        // 【魔術師端】
         // ==========================================
         function initMasterMode() {
             if (!currentRoom) {
@@ -233,11 +233,11 @@
 
         async function startThreeCameraAR() {
             try {
-                // 先行非同步下載符合地圖規格的 Three.js
+                // 1. 動態下載符合對應地圖的 Three.js 核心
                 const threeModule = await import("three");
                 window.THREE = threeModule; 
 
-                // 此時 MindAR 在背後向瀏覽器要求 'three/addons/...' 時將會暢行無阻
+                // 2. 下載 MindAR 核心模組 (此時內部要求的所有路徑已被我們的對應表精準鎖定)
                 const mindarModule = await import("https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-three.prod.js");
                 const MindARThree = mindarModule.MindARThree;
 
@@ -256,7 +256,7 @@
                 const anchor = mindarThree.addAnchor(0);
                 anchor.group.add(cardPlane);
 
-                // 請求相機鏡頭
+                // 啟動鏡頭權限
                 await mindarThree.start();
                 
                 const splash = document.getElementById('splash-screen');
@@ -305,7 +305,6 @@
         function startRevealAnimation(imagePath) {
             const textureLoader = new THREE.TextureLoader();
             textureLoader.load(imagePath, (texture) => {
-                // 兼容現代與舊版 Three.js 的色彩空間設定，防範任何潛在閃退
                 if (THREE.SRGBColorSpace) texture.colorSpace = THREE.SRGBColorSpace;
                 else if (THREE.sRGBEncoding) texture.encoding = THREE.sRGBEncoding;
                 
