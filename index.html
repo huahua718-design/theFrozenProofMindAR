@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>The Frozen Proof - Module Edition</title>
+    <title>The Frozen Proof - Decoupled Edition</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -46,9 +46,20 @@
 
     <div id="app-container" class="w-full h-full bg-black"></div>
 
-    <script type="module">
-        // 從 CDN 以模組形式直接引入核心，徹底解決 undefined 問題
-        import { MindARThree } from "https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-three.prod.js";
+    <script>
+        // ─── 🚨 全域崩潰監聽器（防止任何死黑裝死行為） ───
+        window.addEventListener('error', function(e) {
+            const app = document.getElementById('app-container');
+            if (app) {
+                app.innerHTML = `
+                    <div class="p-6 text-red-500 font-mono text-xs space-y-2 bg-zinc-950 h-screen w-screen flex flex-col justify-center">
+                        <p class="font-bold text-sm">⚠️ 偵測到執行期核心錯誤：</p>
+                        <p class="bg-red-950/30 p-3 rounded border border-red-900/50 break-all">${e.message}</p>
+                        <p class="text-zinc-500 text-[10px]">檔案: ${e.filename}<br>行號: ${e.lineno}</p>
+                    </div>
+                `;
+            }
+        });
 
         // --- 1. FIREBASE 初始化 ---
         const firebaseConfig = {
@@ -78,7 +89,7 @@
         }
 
         // ==========================================
-        // 【魔術師端】功能完美保留
+        // 【魔術師端】純淨、無AR干擾，絕對不黑屏
         // ==========================================
         function initMasterMode() {
             if (!currentRoom) {
@@ -184,7 +195,7 @@
         }
 
         // ==========================================
-        // 【觀眾端】優化後的模組化 AR 啟動機制
+        // 【觀眾端】動態按需引入，保障系統穩定性
         // ==========================================
         let mindarThree = null;
         let cardMaterial = null;
@@ -215,7 +226,10 @@
 
         async function startThreeCameraAR() {
             try {
-                // ─── ✨ 核心修正：直接執行 import 進來的建構式 ───
+                // ─── ✨ 核心進化：動態非同步引入，不拖累魔術師端 ───
+                const mindarModule = await import("https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-three.prod.js");
+                const MindARThree = mindarModule.MindARThree;
+
                 mindarThree = new MindARThree({
                     container: document.getElementById('robot-camera-view-container'),
                     imageTargetSrc: './targets.mind',
@@ -231,7 +245,7 @@
                 const anchor = mindarThree.addAnchor(0);
                 anchor.group.add(cardPlane);
 
-                // 正式要求權限並開啟相機
+                // 喚醒相機
                 await mindarThree.start();
                 
                 const splash = document.getElementById('splash-screen');
