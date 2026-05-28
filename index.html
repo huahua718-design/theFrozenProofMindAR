@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>The Frozen Proof - Pure Image Mirage</title>
+    <title>The Frozen Proof - Sequential Paradox</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -41,7 +41,7 @@
             object-fit: cover !important;
         }
 
-        /* ✨ 讓最終生成的照片允許原生長按儲存選單彈出 */
+        /* 最終生成照片解鎖長按儲存 */
         .saveable-magic-photo {
             position: fixed !important;
             inset: 0 !important;
@@ -49,8 +49,8 @@
             height: 100vh !important;
             object-fit: cover !important;
             z-index: 999999 !important;
-            -webkit-touch-callout: default !important; /* 關鍵：允許 iOS 彈出儲存選單 */
-            -webkit-user-select: auto !important;     /* 關鍵：允許選取行為 */
+            -webkit-touch-callout: default !important;
+            -webkit-user-select: auto !important;
             user-select: auto !important;
             pointer-events: auto !important;
         }
@@ -61,14 +61,14 @@
     <div id="app-container" class="w-full h-full bg-black"></div>
 
     <script>
-        // 錯誤攔截器
+        // 錯誤安全攔截器
         window.addEventListener('error', function(e) {
             const app = document.getElementById('app-container');
             if (app) {
                 app.innerHTML = `
                     <div class="p-6 text-red-500 font-mono text-xs space-y-2 bg-zinc-950 h-screen w-screen flex flex-col justify-center">
                         <p class="font-bold text-sm">⚠️ 偵測到執行期核心錯誤：</p>
-                        <p class="bg-red-900/30 p-3 rounded border border-red-900/50 break-all">${e.message}</p>
+                        <p class="bg-red-950/30 p-3 rounded border border-red-900/50 break-all">${e.message}</p>
                     </div>
                 `;
             }
@@ -88,78 +88,122 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
-        // --- 2. 路由分流 ---
+        // --- 2. 路由分流系統 ---
         const urlParams = new URLSearchParams(window.location.search);
         const mode = urlParams.get('mode');
         const paramRoom = urlParams.get('room');
-        let currentRoom = paramRoom;
+        
+        let baseRoom = paramRoom;
         const appContainer = document.getElementById('app-container');
         
         if (mode === 'master' || (!mode && !paramRoom)) {
-            initMasterMode();
-        } else if (currentRoom) {
+            initSequentialMasterMode();
+        } else if (baseRoom) {
             initSpectatorSplash();
         }
 
         // ==========================================
-        // 【魔術師端】
+        // 【魔術師端】✨ 升級：線性自動排隊盲配系統
         // ==========================================
-        function initMasterMode() {
-            if (!currentRoom) {
-                currentRoom = Math.floor(1000 + Math.random() * 9000).toString();
+        let currentTargetIndex = 1; // 目前準備發送牌組的觀眾順位
+        let globalTotalPlayers = 0; // 目前房間內連線的總人數
+        
+        function initSequentialMasterMode() {
+            if (!baseRoom) {
+                baseRoom = Math.floor(1000 + Math.random() * 9000).toString();
             }
+            
             appContainer.innerHTML = `
                 <div id="master-ui" class="fixed inset-0 w-screen h-screen flex flex-col items-center justify-center bg-black z-[99999]">
                     <div class="flex flex-col items-center p-6">
                         <div id="qrcode" class="p-3 bg-black rounded-xl border border-zinc-900 shadow-2xl"></div>
-                        <p class="text-zinc-800 text-[10px] mt-8 tracking-widest animate-pulse">請觀眾掃描後，點擊螢幕進入主控</p>
+                        <p class="text-zinc-800 text-[10px] mt-8 tracking-widest animate-pulse">單一條碼分流處（點擊進入主控）</p>
                     </div>
                 </div>
                 <div id="stealth-curtain" class="hidden fixed inset-0 w-screen h-screen bg-black z-[100000] touch-none select-none">
-                    <div id="status-indicator" class="fixed bottom-6 left-6 w-2.5 h-2.5 rounded-full bg-white opacity-[0.06] transition-all duration-300"></div>
+                    <div id="indicators-container" class="fixed bottom-6 left-6 right-6 flex justify-center items-center space-x-3 pointer-events-none"></div>
                 </div>
             `;
-            const spectatorUrl = `${window.location.origin}${window.location.pathname}?room=${currentRoom}`;
-            new QRCode(document.getElementById("qrcode"), { text: spectatorUrl, width: 220, height: 220, colorDark : "#ffffff", colorLight : "#000000" });
-            document.getElementById('master-ui').addEventListener('click', () => { document.getElementById('stealth-curtain').classList.remove('hidden'); });
-            setupMasterGestures();
+            
+            // 所有人只掃這一個 QR Code
+            const spectatorUrl = `${window.location.origin}${window.location.pathname}?room=${baseRoom}`;
+            new QRCode(document.getElementById("qrcode"), { text: spectatorUrl, width: 200, height: 200, colorDark : "#ffffff", colorLight : "#000000" });
+            
+            document.getElementById('master-ui').addEventListener('click', () => { 
+                document.getElementById('stealth-curtain').classList.remove('hidden'); 
+            });
+            
+            // 監聽目前房間內的最新報到人數
+            db.ref(`rooms/${baseRoom}/nextIndex`).on('value', (snapshot) => {
+                globalTotalPlayers = snapshot.val() || 0;
+                updateMasterIndicators();
+            });
+
+            setupMasterSequentialGestures();
+        }
+
+        // 動態更新魔術師螢幕最底部的弱光指示點
+        function updateMasterIndicators() {
+            const container = document.getElementById('indicators-container');
+            if (!container) return;
+            container.innerHTML = '';
+            
+            for (let i = 1; i <= globalTotalPlayers; i++) {
+                const dot = document.createElement('div');
+                // 目前選中發牌的對象稍微亮一點點(0.2)，其餘極度微弱(0.03)，確保不穿幫
+                if (i === currentTargetIndex) {
+                    dot.className = "w-2 h-2 rounded-full bg-white opacity-20 animate-pulse";
+                } else {
+                    dot.className = "w-1.5 h-1.5 rounded-full bg-white opacity-[0.03]";
+                }
+                container.appendChild(dot);
+            }
         }
 
         let strokes = []; let touchStartPos = null; let lastTapTime = 0; let pressTimer = null;
-        function setupMasterGestures() {
+        
+        function setupMasterSequentialGestures() {
             const curtain = document.getElementById('stealth-curtain');
-            const indicator = document.getElementById('status-indicator');
+            
             curtain.addEventListener('touchstart', (e) => {
                 if (e.touches.length === 1) touchStartPos = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-                pressTimer = setTimeout(() => resetMasterSystem(), 3000);
+                pressTimer = setTimeout(() => resetSequentialSystem(), 3000); // 長按 3 秒重設
             });
+            
             curtain.addEventListener('touchmove', () => clearTimeout(pressTimer));
+            
             curtain.addEventListener('touchend', (e) => {
                 clearTimeout(pressTimer); if (!touchStartPos) return;
                 let x1 = touchStartPos.x, y1 = touchStartPos.y, x2 = e.changedTouches[0].clientX, y2 = e.changedTouches[0].clientY;
                 touchStartPos = null; let dx = x2 - x1, dy = y2 - y1;
                 let now = Date.now();
-                if (now - lastTapTime < 300 && Math.sqrt(dx*dx + dy*dy) < 15) { sendForcedCard("Joker"); strokes = []; return; }
+                
+                // 快速雙擊螢幕中央：強制作弊目前順位為 Joker
+                if (now - lastTapTime < 300 && Math.sqrt(dx*dx + dy*dy) < 15) { 
+                    sendForcedCardSequential("Joker"); strokes = []; return; 
+                }
                 lastTapTime = now; if (Math.sqrt(dx*dx + dy*dy) < 30) return; 
+                
                 let W = window.innerWidth, H = window.innerHeight;
                 let avgX = (x1 + x2) / 2, avgY = (y1 + y2) / 2, edge, dir;
+                
                 if (Math.abs(dx) > Math.abs(dy)) {
                     if (avgY < H / 2) { edge = 0; dir = dx > 0 ? 1 : -1; } else { edge = 2; dir = dx < 0 ? 1 : -1; }
                 } else {
                     if (avgX >= W / 2) { edge = 1; dir = dy > 0 ? 1 : -1; } else { edge = 3; dir = dy < 0 ? 1 : -1; }
                 }
+                
                 if (strokes.length === 0) {
                     strokes.push({ edge, dir });
-                    indicator.className = "fixed bottom-6 left-6 w-2.5 h-2.5 rounded-full bg-white opacity-70 animate-pulse";
                     if (navigator.vibrate) navigator.vibrate(40);
-                } else if (strokes.length === 1) {
+                } else {
                     let s1 = strokes[0]; let s2 = { edge, dir }; strokes = []; 
-                    indicator.className = "fixed bottom-6 left-6 w-2.5 h-2.5 rounded-full bg-white opacity-[0.06]";
-                    processTwoStrokes(s1, s2);
+                    processSequentialStrokes(s1, s2);
                 }
             });
         }
-        function processTwoStrokes(s1, s2) {
+
+        function processSequentialStrokes(s1, s2) {
             let suitBase = 0;
             if (s1.edge === 3) suitBase = 0; if (s1.edge === 0) suitBase = 13;  
             if (s1.edge === 1) suitBase = 26; if (s1.edge === 2) suitBase = 39;  
@@ -169,29 +213,39 @@
                 finalIndex = suitBase + baseOffset + stroke2Offset;
             }
             const ranks = ['2','3','4','5','6','7','8','9','10','J','Q','K','A']; const suits = ['♣','♦','♥','♠'];
-            sendForcedCard(ranks[finalIndex % 13] + suits[Math.floor(finalIndex / 13)]);
+            sendForcedCardSequential(ranks[finalIndex % 13] + suits[Math.floor(finalIndex / 13)]);
         }
-        function sendForcedCard(cardName) {
-            db.ref(`rooms/${currentRoom}`).set({ forcedCard: cardName, timestamp: firebase.database.ServerValue.TIMESTAMP });
-            if (navigator.vibrate) navigator.vibrate([80, 40, 80]);
+
+        function sendForcedCardSequential(cardName) {
+            // 將牌發送給當前順位的玩家路徑下
+            db.ref(`rooms/${baseRoom}/cards/${currentTargetIndex}`).set({ 
+                forcedCard: cardName, 
+                timestamp: firebase.database.ServerValue.TIMESTAMP 
+            });
+            
+            // 發牌成功，控制指標跳至下一位，並重新渲染幽靈弱光點
+            currentTargetIndex++;
+            updateMasterIndicators();
+            
+            if (navigator.vibrate) navigator.vibrate([70, 40, 70]);
         }
-        function resetMasterSystem() {
+
+        function resetSequentialSystem() {
             strokes = [];
-            db.ref(`rooms/${currentRoom}`).remove();
+            currentTargetIndex = 1;
+            db.ref(`rooms/${baseRoom}`).remove();
+            updateMasterIndicators();
             if (navigator.vibrate) navigator.vibrate(400);
         }
 
         // ==========================================
-        // 【觀眾端】
+        // 【觀眾端】✨ 升級：時間差動態領號與 AR 淬煉
         // ==========================================
-        let mindarThree = null;
-        let cardMaterial = null;
-        let cardPlane = null;
-        let scene = null;
-        let hasTriggered = false; 
-        let forcedCardName = null;
-        let chosenFacingMode = 'environment';
+        let mindarThree = null; let cardMaterial = null; let cardPlane = null; let scene = null;
+        let hasTriggered = false; let forcedCardName = null; let chosenFacingMode = 'environment';
+        let myPlayerIndex = null; // 本機觀眾獲得的專屬隊伍序號
 
+        // 核心修正：攔截並規範 MindAR 識別字串
         const originalGetUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
         navigator.mediaDevices.getUserMedia = function(constraints) {
             if (constraints && constraints.video) {
@@ -212,13 +266,8 @@
                         <p class="text-zinc-400 text-sm font-light tracking-wide">點擊螢幕以連結內在感知</p>
                     </div>
                 </div>
-                
                 <div id="robot-camera-view-container"></div>
-                
-                <button id="camera-toggle-btn" class="fixed bottom-8 right-8 z-[99] bg-black/40 backdrop-blur-md border border-zinc-800/80 text-zinc-300 w-12 h-12 rounded-full shadow-2xl flex items-center justify-center text-lg active:scale-90 transition-all hidden">
-                    🔄
-                </button>
-                
+                <button id="camera-toggle-btn" class="fixed bottom-8 right-8 z-[99] bg-black/40 backdrop-blur-md border border-zinc-800/80 text-zinc-300 w-12 h-12 rounded-full shadow-2xl flex items-center justify-center text-lg active:scale-90 transition-all hidden">🔄</button>
                 <div id="countdown-overlay" class="fixed inset-0 z-50 flex items-center justify-center bg-black/10 pointer-events-none hidden">
                     <span id="countdown-text" class="text-white text-8xl font-black font-mono tracking-tighter scale-50 opacity-0 transition-all duration-300">3</span>
                 </div>
@@ -226,36 +275,36 @@
             `;
             
             document.getElementById('splash-screen').addEventListener('click', () => {
-                document.getElementById('splash-screen').innerHTML = `<p class="text-zinc-500 text-sm font-light tracking-widest animate-pulse">正在開啟相機傳感器...</p>`;
-                setTimeout(() => { startThreeCameraAR(); }, 50);
+                document.getElementById('splash-screen').innerHTML = `<p class="text-zinc-500 text-sm font-light tracking-widest animate-pulse">正在向系統請求通訊證...</p>`;
+                // ✨ 關鍵核心：利用 Firebase 事務(Transaction) 依點擊時間差動態抽取號碼牌
+                db.ref(`rooms/${baseRoom}/nextIndex`).transaction((currentValue) => {
+                    return (currentValue || 0) + 1;
+                }, (error, committed, snapshot) => {
+                    if (committed) {
+                        myPlayerIndex = snapshot.val(); // 成功取得專屬順位 (1, 2, 3...)
+                        document.getElementById('splash-screen').innerHTML = `<p class="text-zinc-500 text-sm font-light tracking-widest animate-pulse">認證成功！傳感器啟動中...</p>`;
+                        setTimeout(() => { startThreeCameraAR(); }, 50);
+                    }
+                });
             });
         }
 
         async function startThreeCameraAR() {
             try {
-                const threeModule = await import("three");
-                window.THREE = threeModule; 
-
+                const threeModule = await import("three"); window.THREE = threeModule; 
                 const mindarModule = await import("https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-three.prod.js");
-                const MindARThree = mindarModule.MindARThree;
-
-                mindarThree = new MindARThree({
+                
+                mindarThree = new mindarModule.MindARThree({
                     container: document.getElementById('robot-camera-view-container'),
                     imageTargetSrc: './targets.mind',
                     uiLoading: "no", uiScanning: "no", uiError: "no",
-                    // 🔥【核心技術開啟】：允許保留畫布快取，確保最後一刻截圖順暢不留黑洞
-                    rendererOptions: { preserveDrawingBuffer: true } 
+                    rendererOptions: { preserveDrawingBuffer: true }
                 });
                 
                 scene = mindarThree.scene;
                 const { renderer, camera } = mindarThree;
-
                 const geometry = new THREE.PlaneGeometry(1, 1.4);
-                cardMaterial = new THREE.MeshBasicMaterial({ 
-                    transparent: true, 
-                    opacity: 0,
-                    blending: THREE.NormalBlending 
-                });
+                cardMaterial = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0 });
                 cardPlane = new THREE.Mesh(geometry, cardMaterial);
                 
                 const anchor = mindarThree.addAnchor(0);
@@ -269,36 +318,22 @@
                 };
 
                 await mindarThree.start();
-                
-                const splash = document.getElementById('splash-screen');
-                if (splash) splash.remove();
+                if (document.getElementById('splash-screen')) document.getElementById('splash-screen').remove();
                 
                 setupCameraToggleButton();
                 startDatabaseListener();
                 
-                renderer.setAnimationLoop(() => {
-                    renderer.render(scene, camera);
-                });
-                
-            } catch (err) {
-                console.error(err);
-            }
+                renderer.setAnimationLoop(() => { renderer.render(scene, camera); });
+            } catch (err) { console.error(err); }
         }
 
         function setupCameraToggleButton() {
             const toggleBtn = document.getElementById('camera-toggle-btn');
             if (!toggleBtn) return;
-            
             toggleBtn.classList.remove('hidden');
             toggleBtn.onclick = async (e) => {
-                e.stopPropagation();
-                toggleBtn.classList.add('pointer-events-none', 'opacity-50');
-                
-                if (mindarThree) {
-                    await mindarThree.stop();
-                    document.getElementById('robot-camera-view-container').innerHTML = '';
-                }
-                
+                e.stopPropagation(); toggleBtn.classList.add('pointer-events-none', 'opacity-50');
+                if (mindarThree) { await mindarThree.stop(); document.getElementById('robot-camera-view-container').innerHTML = ''; }
                 chosenFacingMode = (chosenFacingMode === 'environment') ? 'user' : 'environment';
                 await startThreeCameraAR();
                 toggleBtn.classList.remove('pointer-events-none', 'opacity-50');
@@ -306,19 +341,18 @@
         }
 
         function startDatabaseListener() {
-            db.ref(`rooms/${currentRoom}`).on('value', (snapshot) => {
+            // ✨ 觀眾端精準切入：只監聽屬於自己領到的專屬號碼牌資料
+            db.ref(`rooms/${baseRoom}/cards/${myPlayerIndex}`).on('value', (snapshot) => {
                 const data = snapshot.val();
                 if (data && data.forcedCard) {
-                    db.ref(`rooms/${currentRoom}`).off();
+                    db.ref(`rooms/${baseRoom}/cards/${myPlayerIndex}`).off();
                     forcedCardName = data.forcedCard;
                 }
             });
         }
 
         function runMagicSequence() {
-            const toggleBtn = document.getElementById('camera-toggle-btn');
-            if (toggleBtn) toggleBtn.remove();
-
+            if (document.getElementById('camera-toggle-btn')) document.getElementById('camera-toggle-btn').remove();
             const overlay = document.getElementById('countdown-overlay');
             const text = document.getElementById('countdown-text');
             overlay.classList.remove('hidden');
@@ -329,11 +363,8 @@
                     text.innerText = count;
                     text.className = "text-white text-9xl font-black font-mono scale-50 opacity-0";
                     setTimeout(() => { text.className = "text-white text-9xl font-black font-mono scale-110 opacity-100 transition-all duration-200 ease-out"; }, 50);
-                    count--;
-                    setTimeout(showNextNumber, 1000);
-                } else {
-                    triggerCameraShutter();
-                }
+                    count--; setTimeout(showNextNumber, 1000);
+                } else { triggerCameraShutter(); }
             }
             showNextNumber();
         }
@@ -368,71 +399,47 @@
             const textureLoader = new THREE.TextureLoader();
             textureLoader.load(imagePath, (texture) => {
                 if (THREE.SRGBColorSpace) texture.colorSpace = THREE.SRGBColorSpace;
-                else if (THREE.sRGBEncoding) texture.encoding = THREE.sRGBEncoding;
-                cardMaterial.map = texture;
-                cardMaterial.needsUpdate = true;
-                
+                cardMaterial.map = texture; cardMaterial.needsUpdate = true;
                 let opacityVal = 0;
-                
                 const fadeInterval = setInterval(() => {
                     opacityVal += 0.01;
                     if (opacityVal >= 1.0) {
-                        opacityVal = 1.0;
-                        clearInterval(fadeInterval);
-                        
-                        // 🔥【時空融合成像術】：變牌動畫徹底結束，悄悄將畫面轉為真正的靜態照片
+                        opacityVal = 1.0; clearInterval(fadeInterval);
                         bakeScreenToSaveableImage();
                     }
                     cardMaterial.opacity = opacityVal;
-                }, 40);
+                }, 40); // 40ms * 100 步 = 精準 4 秒漸顯
             });
         }
 
-        // ==========================================
-        // ✨ 新增核心：將 Canvas 融合成純圖片，解鎖原生長按
-        // ==========================================
         function bakeScreenToSaveableImage() {
             const video = document.querySelector('#robot-camera-view-container video');
             const webglCanvas = document.querySelector('#robot-camera-view-container canvas');
-            
             if (!video || !webglCanvas) return;
 
-            // 建立一個與螢幕完全同寬高的臨時 2D 畫布
             const finalCanvas = document.createElement('canvas');
-            finalCanvas.width = webglCanvas.width;
-            finalCanvas.height = webglCanvas.height;
+            finalCanvas.width = webglCanvas.width; finalCanvas.height = webglCanvas.height;
             const ctx = finalCanvas.getContext('2d');
 
-            // 1. 焊接底層：相機被凍結的那一影格 (完美對應 object-fit: cover)
             const videoRatio = video.videoWidth / video.videoHeight;
             const canvasRatio = finalCanvas.width / finalCanvas.height;
             let sw, sh, sx, sy;
             if (videoRatio > canvasRatio) {
-                sh = video.videoHeight; sw = sh * canvasRatio;
-                sx = (video.videoWidth - sw) / 2; sy = 0;
+                sh = video.videoHeight; sw = sh * canvasRatio; sx = (video.videoWidth - sw) / 2; sy = 0;
             } else {
-                sw = video.videoWidth; sh = sw / canvasRatio;
-                sx = 0; sy = (video.videoHeight - sh) / 2;
+                sw = video.videoWidth; sh = sw / canvasRatio; sx = 0; sy = (video.videoHeight - sh) / 2;
             }
             ctx.drawImage(video, sx, sy, sw, sh, 0, 0, finalCanvas.width, finalCanvas.height);
 
-            // 2. 焊接頂層：當下完全顯影的 3D 撲克牌 (強迫進行最後同步渲染)
-            if (mindarThree) {
-                mindarThree.renderer.render(mindarThree.scene, mindarThree.camera);
-            }
+            if (mindarThree) { mindarThree.renderer.render(mindarThree.scene, mindarThree.camera); }
             ctx.drawImage(webglCanvas, 0, 0, finalCanvas.width, finalCanvas.height);
 
-            // 3. 淬煉成標準 JPEG 圖片數據
             const dataUrl = finalCanvas.toDataURL('image/jpeg', 0.95);
-
-            // 4. 生成真・IMG 標籤，覆蓋全螢幕，並賦予專屬特殊觸控 class
             const resultImg = document.createElement('img');
-            resultImg.src = dataUrl;
-            resultImg.className = 'saveable-magic-photo';
+            resultImg.src = dataUrl; resultImg.className = 'saveable-magic-photo';
             document.getElementById('app-container').appendChild(resultImg);
 
-            // 5. ⚡【神蹟收尾】：立刻將背景實體 AR 運算模組與硬體相機徹底關閉！
-            // 這會讓手機上方的相機隱私錄製燈號（綠點）瞬間熄滅，但眼前的相片卻永久留存。
+            // ⚡ 神蹟收尾：徹底關閉硬體相機串流，右上角隱私綠點瞬間熄滅，完成絕對死定格
             if (mindarThree) {
                 mindarThree.stop();
                 const container = document.getElementById('robot-camera-view-container');
