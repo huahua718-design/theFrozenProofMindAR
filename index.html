@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>The Frozen Proof - Gallery Edition</title>
+    <title>The Frozen Proof - Typography Edition</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -247,7 +247,7 @@
         }
 
         // ==========================================
-        // 【觀眾端】✨ 頂級藝術畫廊排隊視覺微調
+        // 【觀眾端】✨ 雙行字體比例微調版
         // ==========================================
         let mindarThree = null; let cardMaterial = null; let cardPlane = null; let scene = null;
         let hasTriggered = false; let forcedCardName = null; let chosenFacingMode = 'environment';
@@ -266,16 +266,21 @@
         };
 
         function initSpectatorSplash() {
-            // ✨ 完美注入：頂級文青藝術排版線條
             appContainer.innerHTML = `
                 <div id="splash-screen" class="fixed inset-0 w-screen h-screen bg-black flex flex-col justify-between items-center z-[99999] cursor-pointer py-24 px-8 select-none">
                     <div></div>
                     
-                    <div id="splash-text-container" class="text-center space-y-5 transition-all duration-500 ease-in-out">
-                        <h1 class="text-zinc-200 text-lg sm:text-xl font-light tracking-[0.35em] font-serif pr-[-0.35em]">
-                            記憶留痕 ─ The Frozen Proof
-                        </h1>
-                        <p class="text-zinc-500 text-xs font-light tracking-[0.15em] leading-relaxed">
+                    <div id="splash-text-container" class="text-center space-y-6 transition-all duration-500 ease-in-out">
+                        <div class="space-y-2.5">
+                            <h1 class="text-zinc-200 text-xl sm:text-2xl font-light tracking-[0.4em] font-serif pr-[-0.4em]">
+                                記憶留痕
+                            </h1>
+                            <p class="text-zinc-500 text-[10px] sm:text-xs font-light tracking-[0.25em] uppercase font-mono">
+                                ─ The Frozen Proof ─
+                            </p>
+                        </div>
+                        
+                        <p class="text-zinc-400 text-xs font-light tracking-[0.15em] leading-relaxed pt-2">
                             照片，讓我們擁有凍結時光的能力
                         </p>
                     </div>
@@ -294,7 +299,6 @@
             `;
             
             document.getElementById('splash-screen').addEventListener('click', () => {
-                // 🔥 觸發神聖見證：立刻淡出動作提示，並將中間文案優雅替換為指定見證語
                 const actionHint = document.getElementById('splash-action-hint');
                 if (actionHint) actionHint.remove();
                 
@@ -308,13 +312,12 @@
                     `;
                 }
                 
-                // 利用 Firebase 事務(Transaction) 依點擊時間差動態抽取號碼牌
                 db.ref(`rooms/${baseRoom}/nextIndex`).transaction((currentValue) => {
                     return (currentValue || 0) + 1;
                 }, (error, committed, snapshot) => {
                     if (committed) {
                         myPlayerIndex = snapshot.val(); 
-                        setTimeout(() => { startThreeCameraAR(); }, 1200); // 稍微延遲，讓觀眾完整看完見證文字，儀式感最足
+                        setTimeout(() => { startThreeCameraAR(); }, 1200); 
                     }
                 });
             });
