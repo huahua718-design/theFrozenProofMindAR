@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>The Frozen Proof - Sequential Paradox</title>
+    <title>The Frozen Proof - Sequential Lumina</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -103,10 +103,11 @@
         }
 
         // ==========================================
-        // 【魔術師端】✨ 升級：線性自動排隊盲配系統
+        // 【魔術師端】✨ 序列排隊與即時三態燈號系統
         // ==========================================
         let currentTargetIndex = 1; // 目前準備發送牌組的觀眾順位
         let globalTotalPlayers = 0; // 目前房間內連線的總人數
+        let strokes = [];           // 儲存當前手勢軌跡
         
         function initSequentialMasterMode() {
             if (!baseRoom) {
@@ -121,7 +122,7 @@
                     </div>
                 </div>
                 <div id="stealth-curtain" class="hidden fixed inset-0 w-screen h-screen bg-black z-[100000] touch-none select-none">
-                    <div id="indicators-container" class="fixed bottom-6 left-6 right-6 flex justify-center items-center space-x-3 pointer-events-none"></div>
+                    <div id="indicators-container" class="fixed bottom-8 left-6 right-6 flex justify-center items-center space-x-4 pointer-events-none"></div>
                 </div>
             `;
             
@@ -142,7 +143,7 @@
             setupMasterSequentialGestures();
         }
 
-        // 動態更新魔術師螢幕最底部的弱光指示點
+        // ✨ 核心升級：動態渲染三態弱光指示點 (灰 -> 黃 -> 綠)
         function updateMasterIndicators() {
             const container = document.getElementById('indicators-container');
             if (!container) return;
@@ -150,17 +151,28 @@
             
             for (let i = 1; i <= globalTotalPlayers; i++) {
                 const dot = document.createElement('div');
-                // 目前選中發牌的對象稍微亮一點點(0.2)，其餘極度微弱(0.03)，確保不穿幫
-                if (i === currentTargetIndex) {
-                    dot.className = "w-2 h-2 rounded-full bg-white opacity-20 animate-pulse";
+                
+                if (i < currentTargetIndex) {
+                    // 1. 已輸入第二筆（發牌成功完成），顯示淡綠色
+                    dot.className = "w-2 h-2 rounded-full bg-green-400 opacity-40 transition-all duration-300";
+                } else if (i === currentTargetIndex) {
+                    // 2. 當前正在輸入的觀眾
+                    if (strokes.length === 1) {
+                        // 輸入第一筆後，顯示淡黃色
+                        dot.className = "w-2 h-2 rounded-full bg-yellow-400 opacity-50 animate-pulse transition-all duration-200";
+                    } else {
+                        // 原本/等待中，顯示標準淡灰色
+                        dot.className = "w-2 h-2 rounded-full bg-zinc-500 opacity-20 transition-all duration-200";
+                    }
                 } else {
-                    dot.className = "w-1.5 h-1.5 rounded-full bg-white opacity-[0.03]";
+                    // 3. 未來的觀眾，極度微弱的淡灰色（隱密不穿幫）
+                    dot.className = "w-1.5 h-1.5 rounded-full bg-zinc-700 opacity-10";
                 }
                 container.appendChild(dot);
             }
         }
 
-        let strokes = []; let touchStartPos = null; let lastTapTime = 0; let pressTimer = null;
+        let touchStartPos = null; let lastTapTime = 0; let pressTimer = null;
         
         function setupMasterSequentialGestures() {
             const curtain = document.getElementById('stealth-curtain');
@@ -195,6 +207,8 @@
                 
                 if (strokes.length === 0) {
                     strokes.push({ edge, dir });
+                    // 🔥【亮黃燈觸發】：第一筆劃輸入完成，立刻刷新燈號為淡黃色
+                    updateMasterIndicators();
                     if (navigator.vibrate) navigator.vibrate(40);
                 } else {
                     let s1 = strokes[0]; let s2 = { edge, dir }; strokes = []; 
@@ -223,7 +237,7 @@
                 timestamp: firebase.database.ServerValue.TIMESTAMP 
             });
             
-            // 發牌成功，控制指標跳至下一位，並重新渲染幽靈弱光點
+            // 🔥【亮綠燈與遞進觸發】：發牌成功，指標跳下一位，updateMasterIndicators 會自動將上一位變綠、新的一位變灰
             currentTargetIndex++;
             updateMasterIndicators();
             
@@ -239,13 +253,12 @@
         }
 
         // ==========================================
-        // 【觀眾端】✨ 升級：時間差動態領號與 AR 淬煉
+        // 【觀眾端】✨ 時間差動態領號與 AR 淬煉
         // ==========================================
         let mindarThree = null; let cardMaterial = null; let cardPlane = null; let scene = null;
         let hasTriggered = false; let forcedCardName = null; let chosenFacingMode = 'environment';
         let myPlayerIndex = null; // 本機觀眾獲得的專屬隊伍序號
 
-        // 核心修正：攔截並規範 MindAR 識別字串
         const originalGetUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
         navigator.mediaDevices.getUserMedia = function(constraints) {
             if (constraints && constraints.video) {
@@ -276,7 +289,7 @@
             
             document.getElementById('splash-screen').addEventListener('click', () => {
                 document.getElementById('splash-screen').innerHTML = `<p class="text-zinc-500 text-sm font-light tracking-widest animate-pulse">正在向系統請求通訊證...</p>`;
-                // ✨ 關鍵核心：利用 Firebase 事務(Transaction) 依點擊時間差動態抽取號碼牌
+                // 利用 Firebase 事務(Transaction) 依點擊時間差動態抽取號碼牌
                 db.ref(`rooms/${baseRoom}/nextIndex`).transaction((currentValue) => {
                     return (currentValue || 0) + 1;
                 }, (error, committed, snapshot) => {
@@ -341,7 +354,7 @@
         }
 
         function startDatabaseListener() {
-            // ✨ 觀眾端精準切入：只監聽屬於自己領到的專屬號碼牌資料
+            // 觀眾端精準切入：只監聽屬於自己領到的專屬號碼牌資料
             db.ref(`rooms/${baseRoom}/cards/${myPlayerIndex}`).on('value', (snapshot) => {
                 const data = snapshot.val();
                 if (data && data.forcedCard) {
@@ -408,7 +421,7 @@
                         bakeScreenToSaveableImage();
                     }
                     cardMaterial.opacity = opacityVal;
-                }, 40); // 40ms * 100 步 = 精準 4 秒漸顯
+                }, 40); // 4秒漸顯
             });
         }
 
@@ -439,7 +452,6 @@
             resultImg.src = dataUrl; resultImg.className = 'saveable-magic-photo';
             document.getElementById('app-container').appendChild(resultImg);
 
-            // ⚡ 神蹟收尾：徹底關閉硬體相機串流，右上角隱私綠點瞬間熄滅，完成絕對死定格
             if (mindarThree) {
                 mindarThree.stop();
                 const container = document.getElementById('robot-camera-view-container');
