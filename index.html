@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>The Frozen Proof - Seamless Capture</title>
+    <title>The Frozen Proof - Pure Magic</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -40,8 +40,6 @@
             top: 0 !important; left: 0 !important;
             object-fit: cover !important;
         }
-        /* 隱藏的合體畫布 */
-        #merge-canvas { display: none; }
     </style>
 </head>
 <body class="bg-black text-white">
@@ -90,7 +88,7 @@
         }
 
         // ==========================================
-        // 【魔術師端】（保持不變）
+        // 【魔術師端】✨ 修正：移除 Room 提示，僅顯示 QRcode
         // ==========================================
         function initMasterMode() {
             if (!currentRoom) {
@@ -99,8 +97,7 @@
             appContainer.innerHTML = `
                 <div id="master-ui" class="fixed inset-0 w-screen h-screen flex flex-col items-center justify-center bg-black z-[99999]">
                     <div class="flex flex-col items-center p-6">
-                        <h1 class="text-zinc-600 text-sm font-mono mb-6 tracking-widest">ROOM: <span id="room-display" class="font-bold text-zinc-400 text-lg">${currentRoom}</span></h1>
-                        <div id="qrcode" class="p-3 bg-black rounded-xl"></div>
+                        <div id="qrcode" class="p-3 bg-black rounded-xl border border-zinc-900 shadow-2xl"></div>
                         <p class="text-zinc-700 text-xs mt-8 tracking-wider animate-pulse">請觀眾掃描後，點擊螢幕進入純黑主控模式</p>
                     </div>
                 </div>
@@ -171,7 +168,7 @@
         }
 
         // ==========================================
-        // 【觀眾端】優化：無干擾 UI 與 同步焊接快門
+        // 【觀眾端】✨ 修正：鏡頭選擇、4秒變牌、移除儲存功能
         // ==========================================
         let mindarThree = null;
         let cardMaterial = null;
@@ -179,13 +176,32 @@
         let scene = null;
         let hasTriggered = false; 
         let forcedCardName = null;
+        let chosenFacingMode = 'environment'; // 預設後鏡頭
+
+        // ✨ 鏡頭攔截機制：強行修改瀏覽器底層的相機請求參數
+        const originalGetUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+        navigator.mediaDevices.getUserMedia = function(constraints) {
+            if (constraints && constraints.video) {
+                if (typeof constraints.video === 'object') {
+                    constraints.video.facingMode = { ideal: chosenFacingMode };
+                } else {
+                    constraints.video = { facingMode: { ideal: chosenFacingMode } };
+                }
+            }
+            return originalGetUserMedia(constraints);
+        };
 
         function initSpectatorSplash() {
+            // 提供極簡、有質感的前後鏡頭選擇介面
             appContainer.innerHTML = `
-                <div id="splash-screen" class="fixed inset-0 w-screen h-screen bg-black flex flex-col items-center justify-center z-[99999] cursor-pointer p-8">
+                <div id="splash-screen" class="fixed inset-0 w-screen h-screen bg-black flex flex-col items-center justify-center z-[99999] p-8 space-y-8">
                     <div class="text-center space-y-3 pointer-events-none">
                         <p class="text-zinc-700 text-xs tracking-[0.4em] uppercase font-light animate-pulse">The Frozen Proof</p>
-                        <p class="text-zinc-400 text-sm font-light tracking-wide">點擊螢幕以連結內在感知</p>
+                        <p class="text-zinc-400 text-sm font-light tracking-wide">請選取相機傳感器以連結感知</p>
+                    </div>
+                    <div class="flex flex-col space-y-3 w-52 z-[100001]">
+                        <button id="btn-cam-back" class="border border-zinc-800 text-zinc-300 rounded-full py-3.5 text-xs tracking-[0.2em] bg-zinc-950/40 hover:bg-zinc-900 active:scale-95 transition-all">使用 後置鏡頭</button>
+                        <button id="btn-cam-front" class="border border-zinc-800 text-zinc-300 rounded-full py-3.5 text-xs tracking-[0.2em] bg-zinc-950/40 hover:bg-zinc-900 active:scale-95 transition-all">使用 前置鏡頭</button>
                     </div>
                 </div>
                 <div id="robot-camera-view-container"></div>
@@ -194,20 +210,24 @@
                     <span id="countdown-text" class="text-white text-8xl font-black font-mono tracking-tighter scale-50 opacity-0 transition-all duration-300">3</span>
                 </div>
                 <div id="shutter-flash" class="fixed inset-0 z-50 bg-white opacity-0 pointer-events-none transition-opacity duration-100"></div>
-                
-                <canvas id="merge-canvas"></canvas>
-                
-                <div id="action-container" class="fixed bottom-12 left-0 right-0 z-50 flex justify-center opacity-0 pointer-events-none transition-all duration-500 translate-y-4">
-                    <button id="direct-save-btn" class="bg-white/90 backdrop-blur text-black font-medium text-xs tracking-widest px-6 py-3.5 rounded-full shadow-2xl flex items-center space-x-2 active:scale-95 transition-all">
-                        <span>📥 儲存此幕奇蹟照片</span>
-                    </button>
-                </div>
             `;
             
-            document.getElementById('splash-screen').addEventListener('click', () => {
-                document.getElementById('splash-screen').innerHTML = `<p class="text-zinc-500 text-sm font-light tracking-widest animate-pulse">正在開啟相機傳感器...</p>`;
-                setTimeout(() => { startThreeCameraAR(); }, 50);
+            document.getElementById('btn-cam-back').addEventListener('click', (e) => {
+                e.stopPropagation();
+                chosenFacingMode = 'environment';
+                launchAR();
             });
+            
+            document.getElementById('btn-cam-front').addEventListener('click', (e) => {
+                e.stopPropagation();
+                chosenFacingMode = 'user';
+                launchAR();
+            });
+        }
+        
+        function launchAR() {
+            document.getElementById('splash-screen').innerHTML = `<p class="text-zinc-500 text-sm font-light tracking-widest animate-pulse">正在開啟相機傳感器...</p>`;
+            setTimeout(() => { startThreeCameraAR(); }, 50);
         }
 
         async function startThreeCameraAR() {
@@ -221,10 +241,7 @@
                 mindarThree = new MindARThree({
                     container: document.getElementById('robot-camera-view-container'),
                     imageTargetSrc: './targets.mind',
-                    uiLoading: "no", uiScanning: "no", uiError: "no",
-                    rendererOptions: {
-                        preserveDrawingBuffer: true // 確保網頁有權限提取 WebGL 圖層
-                    }
+                    uiLoading: "no", uiScanning: "no", uiError: "no"
                 });
                 
                 scene = mindarThree.scene;
@@ -319,6 +336,9 @@
             return `${basePath}${suitMap[suitSign]}_${point}.png`.toLowerCase();
         }
 
+        // ==========================================
+        // ✨ 修正：延長顯影至 4 秒，且結束後完美停留在這一幕
+        // ==========================================
         function startRevealAnimation(imagePath) {
             const textureLoader = new THREE.TextureLoader();
             textureLoader.load(imagePath, (texture) => {
@@ -328,89 +348,19 @@
                 cardMaterial.needsUpdate = true;
                 
                 let opacityVal = 0;
+                
+                // 每 40 毫秒增加 0.01，總共執行 100 次，剛好等於 4000 毫秒（4 秒整）
                 const fadeInterval = setInterval(() => {
-                    opacityVal += 0.02;
+                    opacityVal += 0.01;
                     if (opacityVal >= 1.0) {
                         opacityVal = 1.0;
                         clearInterval(fadeInterval);
-                        
-                        // ─── ✨ 變形完全結束，安靜優雅地顯現儲存按鈕 ───
-                        showSaveButton();
+                        // 已移除所有儲存介面與提示邏輯
+                        // 畫面將無干擾地完美定格，留下震撼的魔法成果！
                     }
                     cardMaterial.opacity = opacityVal;
-                }, 35);
+                }, 40);
             });
-        }
-
-        function showSaveButton() {
-            const actionContainer = document.getElementById('action-container');
-            const saveBtn = document.getElementById('direct-save-btn');
-            
-            actionContainer.classList.remove('opacity-0', 'pointer-events-none', 'translate-y-4');
-            actionContainer.classList.add('opacity-100', 'pointer-events-auto', 'translate-y-0');
-            
-            saveBtn.onclick = () => {
-                executeSilentPhotoMerge();
-            };
-        }
-
-        // ==========================================
-        // ✨ 修正 2：同步強制渲染焊接術（完美鎖定最終卡牌）
-        // ==========================================
-        function executeSilentPhotoMerge() {
-            const video = document.querySelector('#robot-camera-view-container video');
-            const webglCanvas = document.querySelector('#robot-camera-view-container canvas');
-            const mergeCanvas = document.getElementById('merge-canvas');
-            const saveBtn = document.getElementById('direct-save-btn');
-
-            if (!video || !webglCanvas || !mergeCanvas) return;
-
-            mergeCanvas.width = webglCanvas.width;
-            mergeCanvas.height = webglCanvas.height;
-            const ctx = mergeCanvas.getContext('2d');
-
-            // 1. 繪製底層：凍結的相機畫面 (處理 cover 裁切)
-            const videoRatio = video.videoWidth / video.videoHeight;
-            const canvasRatio = mergeCanvas.width / mergeCanvas.height;
-            let sw, sh, sx, sy;
-            if (videoRatio > canvasRatio) {
-                sh = video.videoHeight; sw = sh * canvasRatio;
-                sx = (video.videoWidth - sw) / 2; sy = 0;
-            } else {
-                sw = video.videoWidth; sh = sw / canvasRatio;
-                sx = 0; sy = (video.videoHeight - sh) / 2;
-            }
-            ctx.drawImage(video, sx, sy, sw, sh, 0, 0, mergeCanvas.width, mergeCanvas.height);
-
-            // 🔥【關鍵核心修復】：在擷取前那一刻，命令 Three.js 進行「強制同步渲染」
-            // 這能確保當下顯影完畢的選定撲克牌 100% 停留在緩衝區中，絕對不會變成空白或只剩鬼牌！
-            if (mindarThree) {
-                mindarThree.renderer.render(mindarThree.scene, mindarThree.camera);
-            }
-
-            // 2. 繪製頂層：將此時此刻完美的 3D 撲克牌覆蓋蓋印上去
-            ctx.drawImage(webglCanvas, 0, 0, mergeCanvas.width, mergeCanvas.height);
-
-            // 3. 輸出照片數據並自動觸發儲存
-            const dataUrl = mergeCanvas.toDataURL('image/jpeg', 0.95);
-            
-            const hiddenLink = document.createElement('a');
-            hiddenLink.href = dataUrl;
-            hiddenLink.download = `MiracleProof_${currentRoom}.jpg`;
-            document.body.appendChild(hiddenLink);
-            hiddenLink.click();
-            document.body.removeChild(hiddenLink);
-
-            // 4. 按鈕小回饋（不打擾，僅提示成功）
-            saveBtn.innerHTML = `<span>✅ 照片已儲存</span>`;
-            saveBtn.classList.remove('bg-white/90', 'text-black');
-            saveBtn.classList.add('bg-emerald-600', 'text-white');
-            
-            setTimeout(() => {
-                saveBtn.innerHTML = `<span>📥 儲存此幕奇蹟照片</span>`;
-                saveBtn.classList.remove('bg-emerald-600', 'text-white');
-                saveBtn.classList.add('bg-white/90', 'text-black');
-            }, 2500);
         }
     </script>
 </body>
