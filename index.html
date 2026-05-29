@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>The Frozen Proof - Typography Edition</title>
+    <title>The Frozen Proof - Connection Edition</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -247,7 +247,7 @@
         }
 
         // ==========================================
-        // 【觀眾端】✨ 雙行字體比例微調版
+        // 【觀眾端】✨ 連結核心優化版
         // ==========================================
         let mindarThree = null; let cardMaterial = null; let cardPlane = null; let scene = null;
         let hasTriggered = false; let forcedCardName = null; let chosenFacingMode = 'environment';
@@ -281,7 +281,7 @@
                         </div>
                         
                         <p class="text-zinc-400 text-xs font-light tracking-[0.15em] leading-relaxed pt-2">
-                            照片，讓我們擁有凍結時光的能力
+                            魔術，讓我們連結了這一刻
                         </p>
                     </div>
                     
@@ -402,6 +402,7 @@
             showNextNumber();
         }
 
+        // ✨ 修改 1：拍照定格後，靜止不動，直到點擊才顯影撲克牌
         function triggerCameraShutter() {
             const overlay = document.getElementById('countdown-overlay');
             const flash = document.getElementById('shutter-flash');
@@ -411,11 +412,24 @@
             flash.style.opacity = "0.9";
             setTimeout(() => { flash.style.opacity = "0"; }, 150);
 
-            if (video) { video.pause(); }
+            if (video) { video.pause(); } // 畫面在此刻完美凍結
             if (scene && cardPlane) { scene.attach(cardPlane); }
 
-            const imagePath = getBicycleImagePath(forcedCardName);
-            startRevealAnimation(imagePath);
+            // 監聽觀眾的下一次點擊（包含點擊與手機觸控）
+            const handleUserRevealClick = () => {
+                window.removeEventListener('click', handleUserRevealClick);
+                window.removeEventListener('touchstart', handleUserRevealClick);
+                
+                // 正式加載圖片路徑並執行 4 秒漸顯動畫
+                const imagePath = getBicycleImagePath(forcedCardName);
+                startRevealAnimation(imagePath);
+            };
+
+            // 設置 350ms 的防誤觸安全機制，避免因為倒數結束時觀眾正在調整拿手機的姿勢而瞬間誤觸
+            setTimeout(() => {
+                window.addEventListener('click', handleUserRevealClick);
+                window.addEventListener('touchstart', handleUserRevealClick);
+            }, 350);
         }
 
         function getBicycleImagePath(cardName) {
