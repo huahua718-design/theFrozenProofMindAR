@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>The Frozen Proof - Connection Edition</title>
+    <title>The Frozen Proof - Absolute Click Fix</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -127,7 +127,7 @@
                 <div id="master-ui" class="fixed inset-0 w-screen h-screen flex flex-col items-center justify-center bg-black z-[99999]">
                     <div class="flex flex-col items-center p-6">
                         <div id="qrcode" class="p-3 bg-black rounded-xl border border-zinc-900 shadow-2xl"></div>
-                        <p class="text-zinc-800 text-[10px] mt-8 tracking-widest animate-pulse">單一條碼分流處（點擊進入主控）</p>
+                        <p class="text-zinc-800 text-[10px] mt-8 tracking-widest animate-pulse">單一條條碼分流處（點擊進入主控）</p>
                     </div>
                 </div>
                 <div id="stealth-curtain" class="hidden fixed inset-0 w-screen h-screen bg-black z-[100000] touch-none select-none">
@@ -247,11 +247,11 @@
         }
 
         // ==========================================
-        // 【觀眾端】✨ 連結核心優化版
+        // 【觀眾端】穩定度修復核心
         // ==========================================
         let mindarThree = null; let cardMaterial = null; let cardPlane = null; let scene = null;
         let hasTriggered = false; let forcedCardName = null; let chosenFacingMode = 'environment';
-        let myPlayerIndex = null; 
+        let myPlayerIndex = null; let isCameraReady = false;
 
         const originalGetUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
         navigator.mediaDevices.getUserMedia = function(constraints) {
@@ -312,12 +312,15 @@
                     `;
                 }
                 
+                // 🚀 【優化 1】：異步雙軌並行，點擊立即開始加載相機，絕不等待網路
+                setTimeout(() => { startThreeCameraAR(); }, 200);
+
                 db.ref(`rooms/${baseRoom}/nextIndex`).transaction((currentValue) => {
                     return (currentValue || 0) + 1;
                 }, (error, committed, snapshot) => {
                     if (committed) {
                         myPlayerIndex = snapshot.val(); 
-                        setTimeout(() => { startThreeCameraAR(); }, 1200); 
+                        if (isCameraReady) { startDatabaseListener(); }
                     }
                 });
             });
@@ -352,10 +355,12 @@
                 };
 
                 await mindarThree.start();
+                isCameraReady = true;
+                
                 if (document.getElementById('splash-screen')) document.getElementById('splash-screen').remove();
                 
                 setupCameraToggleButton();
-                startDatabaseListener();
+                if (myPlayerIndex !== null) { startDatabaseListener(); }
                 
                 renderer.setAnimationLoop(() => { renderer.render(scene, camera); });
             } catch (err) { console.error(err); }
@@ -368,6 +373,7 @@
             toggleBtn.onclick = async (e) => {
                 e.stopPropagation(); toggleBtn.classList.add('pointer-events-none', 'opacity-50');
                 if (mindarThree) { await mindarThree.stop(); document.getElementById('robot-camera-view-container').innerHTML = ''; }
+                isCameraReady = false;
                 chosenFacingMode = (chosenFacingMode === 'environment') ? 'user' : 'environment';
                 await startThreeCameraAR();
                 toggleBtn.classList.remove('pointer-events-none', 'opacity-50');
@@ -380,6 +386,10 @@
                 if (data && data.forcedCard) {
                     db.ref(`rooms/${baseRoom}/cards/${myPlayerIndex}`).off();
                     forcedCardName = data.forcedCard;
+                    // 如果相機早就抓到目標但卡在等資料，拿到資料立刻補發倒數
+                    if (isCameraReady && !hasTriggered && mindarThree) {
+                        // 這裡交由常規掃描觸發，或在此補發
+                    }
                 }
             });
         }
@@ -402,7 +412,6 @@
             showNextNumber();
         }
 
-        // ✨ 修改 1：拍照定格後，靜止不動，直到點擊才顯影撲克牌
         function triggerCameraShutter() {
             const overlay = document.getElementById('countdown-overlay');
             const flash = document.getElementById('shutter-flash');
@@ -412,23 +421,29 @@
             flash.style.opacity = "0.9";
             setTimeout(() => { flash.style.opacity = "0"; }, 150);
 
-            if (video) { video.pause(); } // 畫面在此刻完美凍結
+            if (video) { video.pause(); } 
             if (scene && cardPlane) { scene.attach(cardPlane); }
 
-            // 監聽觀眾的下一次點擊（包含點擊與手機觸控）
-            const handleUserRevealClick = () => {
-                window.removeEventListener('click', handleUserRevealClick);
-                window.removeEventListener('touchstart', handleUserRevealClick);
+            // 🚀 【優化 2】：動態注入「絕對高階隱形點擊捕捉層」，強制攔截所有手機點擊事件，不被畫布吃掉
+            const clickOverlay = document.createElement('div');
+            clickOverlay.id = "absolute-touch-catcher";
+            clickOverlay.className = "fixed inset-0 w-screen h-screen bg-transparent z-[999999] cursor-pointer touch-none";
+            document.getElementById('app-container').appendChild(clickOverlay);
+
+            const handleUserRevealClick = (e) => {
+                if (e) { e.preventDefault(); e.stopPropagation(); }
                 
-                // 正式加載圖片路徑並執行 4 秒漸顯動畫
+                // 點擊觸發成功後，立刻卸載防護層與事件，防止重複觸發
+                clickOverlay.remove();
+                
                 const imagePath = getBicycleImagePath(forcedCardName);
                 startRevealAnimation(imagePath);
             };
 
-            // 設置 350ms 的防誤觸安全機制，避免因為倒數結束時觀眾正在調整拿手機的姿勢而瞬間誤觸
+            // 350毫秒安全鎖，防止拍照時觀眾手晃誤觸
             setTimeout(() => {
-                window.addEventListener('click', handleUserRevealClick);
-                window.addEventListener('touchstart', handleUserRevealClick);
+                clickOverlay.addEventListener('click', handleUserRevealClick);
+                clickOverlay.addEventListener('touchstart', handleUserRevealClick);
             }, 350);
         }
 
