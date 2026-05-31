@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>The Frozen Proof - Absolute Click Fix</title>
+    <title>記憶流痕</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -127,7 +127,7 @@
                 <div id="master-ui" class="fixed inset-0 w-screen h-screen flex flex-col items-center justify-center bg-black z-[99999]">
                     <div class="flex flex-col items-center p-6">
                         <div id="qrcode" class="p-3 bg-black rounded-xl border border-zinc-900 shadow-2xl"></div>
-                        <p class="text-zinc-800 text-[10px] mt-8 tracking-widest animate-pulse">單一條條碼分流處（點擊進入主控）</p>
+                        <p class="text-zinc-800 text-[10px] mt-8 tracking-widest animate-pulse">單一條碼分流處（點擊進入主控）</p>
                     </div>
                 </div>
                 <div id="stealth-curtain" class="hidden fixed inset-0 w-screen h-screen bg-black z-[100000] touch-none select-none">
@@ -247,11 +247,15 @@
         }
 
         // ==========================================
-        // 【觀眾端】穩定度修復核心
+        // 【觀眾端】✨ 獨立時空魔法引擎
         // ==========================================
         let mindarThree = null; let cardMaterial = null; let cardPlane = null; let scene = null;
         let hasTriggered = false; let forcedCardName = null; let chosenFacingMode = 'environment';
         let myPlayerIndex = null; let isCameraReady = false;
+        
+        // 新增控制變數：追蹤觀眾點擊狀態與變牌狀態
+        let userClickedReveal = false;
+        let animationStarted = false;
 
         const originalGetUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
         navigator.mediaDevices.getUserMedia = function(constraints) {
@@ -312,7 +316,6 @@
                     `;
                 }
                 
-                // 🚀 【優化 1】：異步雙軌並行，點擊立即開始加載相機，絕不等待網路
                 setTimeout(() => { startThreeCameraAR(); }, 200);
 
                 db.ref(`rooms/${baseRoom}/nextIndex`).transaction((currentValue) => {
@@ -347,8 +350,9 @@
                 const anchor = mindarThree.addAnchor(0);
                 anchor.group.add(cardPlane);
 
+                // 🚀 【修改 2的核心】：移除 forcedCardName 的檢查！一對準鬼牌立刻開拍定格！
                 anchor.onTargetFound = () => {
-                    if (forcedCardName && !hasTriggered) {
+                    if (!hasTriggered) {
                         hasTriggered = true;
                         runMagicSequence();
                     }
@@ -384,11 +388,15 @@
             db.ref(`rooms/${baseRoom}/cards/${myPlayerIndex}`).on('value', (snapshot) => {
                 const data = snapshot.val();
                 if (data && data.forcedCard) {
-                    db.ref(`rooms/${baseRoom}/cards/${myPlayerIndex}`).off();
                     forcedCardName = data.forcedCard;
-                    // 如果相機早就抓到目標但卡在等資料，拿到資料立刻補發倒數
-                    if (isCameraReady && !hasTriggered && mindarThree) {
-                        // 這裡交由常規掃描觸發，或在此補發
+                    
+                    // 🚀 如果觀眾已經心急先點了螢幕，而此時魔術師剛好輸入完畢，立刻啟動顯影變牌！
+                    if (userClickedReveal && !animationStarted) {
+                        db.ref(`rooms/${baseRoom}/cards/${myPlayerIndex}`).off();
+                        const clickOverlay = document.getElementById('absolute-touch-catcher');
+                        if (clickOverlay) clickOverlay.remove();
+                        animationStarted = true;
+                        executeReveal();
                     }
                 }
             });
@@ -421,10 +429,10 @@
             flash.style.opacity = "0.9";
             setTimeout(() => { flash.style.opacity = "0"; }, 150);
 
-            if (video) { video.pause(); } 
+            if (video) { video.pause(); } // 完美將此時此刻實體拍攝的鬼牌畫面完全凍結！
             if (scene && cardPlane) { scene.attach(cardPlane); }
 
-            // 🚀 【優化 2】：動態注入「絕對高階隱形點擊捕捉層」，強制攔截所有手機點擊事件，不被畫布吃掉
+            // 注入高階隱形防護網層，準備捕捉點擊
             const clickOverlay = document.createElement('div');
             clickOverlay.id = "absolute-touch-catcher";
             clickOverlay.className = "fixed inset-0 w-screen h-screen bg-transparent z-[999999] cursor-pointer touch-none";
@@ -432,19 +440,32 @@
 
             const handleUserRevealClick = (e) => {
                 if (e) { e.preventDefault(); e.stopPropagation(); }
+                if (animationStarted) return;
                 
-                // 點擊觸發成功後，立刻卸載防護層與事件，防止重複觸發
-                clickOverlay.remove();
+                userClickedReveal = true; // 標記觀眾已有點擊意願
                 
-                const imagePath = getBicycleImagePath(forcedCardName);
-                startRevealAnimation(imagePath);
+                // 🚀 如果魔術師早就輸入好了（常規狀況）
+                if (forcedCardName) {
+                    db.ref(`rooms/${baseRoom}/cards/${myPlayerIndex}`).off();
+                    clickOverlay.remove();
+                    animationStarted = true;
+                    executeReveal();
+                } else {
+                    // 如果魔術師還在裝模作樣還沒輸入，觀眾點擊會觸發極輕微震動，手機假裝正在與宇宙能量連結，默默等待訊號傳入
+                    if (navigator.vibrate) navigator.vibrate(20);
+                }
             };
 
-            // 350毫秒安全鎖，防止拍照時觀眾手晃誤觸
             setTimeout(() => {
                 clickOverlay.addEventListener('click', handleUserRevealClick);
                 clickOverlay.addEventListener('touchstart', handleUserRevealClick);
             }, 350);
+        }
+
+        // 執行變牌漸顯動畫
+        function executeReveal() {
+            const imagePath = getBicycleImagePath(forcedCardName);
+            startRevealAnimation(imagePath);
         }
 
         function getBicycleImagePath(cardName) {
