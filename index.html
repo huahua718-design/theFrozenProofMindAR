@@ -41,7 +41,7 @@
             object-fit: cover !important;
         }
 
-        /* ✨ 修改 2：前置鏡頭智慧鏡像翻轉 */
+        /* 前置鏡頭水平鏡像智慧翻轉 */
         .camera-mirrored video,
         .camera-mirrored canvas {
             transform: scaleX(-1) !important;
@@ -118,7 +118,7 @@
         }
 
         // ==========================================
-        // 【魔術師端】不變
+        // 【魔術師端】保持穩定運作
         // ==========================================
         let currentTargetIndex = 1; 
         let globalTotalPlayers = 0; 
@@ -253,7 +253,7 @@
         }
 
         // ==========================================
-        // 【觀眾端】✨ 頂級時空鎖定引擎
+        // 【觀眾端】✨ 頂級時空矩陣鎖定引擎
         // ==========================================
         let mindarThree = null; let cardMaterial = null; let cardPlane = null; let scene = null;
         let hasTriggered = false; let forcedCardName = null; let chosenFacingMode = 'environment';
@@ -261,7 +261,7 @@
         
         let userClickedReveal = false;
         let animationStarted = false;
-        let animationComplete = false; // 用於控制自製靜態渲染迴圈
+        let animationComplete = false; 
 
         const originalGetUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
         navigator.mediaDevices.getUserMedia = function(constraints) {
@@ -342,7 +342,6 @@
                 
                 const container = document.getElementById('robot-camera-view-container');
                 
-                // ✨ 處理前置鏡頭水平鏡像樣式
                 if (chosenFacingMode === 'user') {
                     container.classList.add('camera-mirrored');
                 } else {
@@ -365,7 +364,6 @@
                 const anchor = mindarThree.addAnchor(0);
                 anchor.group.add(cardPlane);
 
-                // 一對準立刻開拍倒數，不等待魔術師輸入
                 anchor.onTargetFound = () => {
                     if (!hasTriggered) {
                         hasTriggered = true;
@@ -405,7 +403,6 @@
                 if (data && data.forcedCard) {
                     forcedCardName = data.forcedCard;
                     
-                    // 如果觀眾已經先點擊螢幕，而此時魔術師輸入傳入，立刻解鎖顯影
                     if (userClickedReveal && !animationStarted) {
                         db.ref(`rooms/${baseRoom}/cards/${myPlayerIndex}`).off();
                         const clickOverlay = document.getElementById('absolute-touch-catcher');
@@ -435,7 +432,7 @@
             showNextNumber();
         }
 
-        // ✨ 修改 1：頂級時空矩陣鎖定核心
+        // ✨ 矩陣解構與複製人相機核心修復點
         function triggerCameraShutter() {
             const overlay = document.getElementById('countdown-overlay');
             const flash = document.getElementById('shutter-flash');
@@ -447,37 +444,39 @@
 
             if (video) { video.pause(); } 
 
-            // 🎯 【關鍵核心】：在定格的瞬間，強行演算並備份 3D 世界座標與相機角度
-            mindarThree.renderer.render(scene, mindarThree.camera); 
+            // 1. 強制更新世界矩陣
             cardPlane.updateMatrixWorld(true);
             mindarThree.camera.updateMatrixWorld(true);
             
-            const savedCameraMatrix = mindarThree.camera.matrixWorld.clone();
-            const savedCardMatrix = cardPlane.matrixWorld.clone();
+            // 2. 🎛️ 建立複製人相機，徹底綁定快門瞬間的視角，完全規避 MindAR 後台重置
+            const staticCamera = new THREE.PerspectiveCamera();
+            staticCamera.matrixAutoUpdate = false;
+            staticCamera.matrixWorld.copy(mindarThree.camera.matrixWorld);
+            staticCamera.matrixWorldInverse.copy(mindarThree.camera.matrixWorldInverse);
+            staticCamera.projectionMatrix.copy(mindarThree.camera.projectionMatrix);
+            window.currentStaticCamera = staticCamera; // 註冊給全局烘焙使用
+
+            // 3. 🧬 將撲克牌移出追蹤群組，並將「世界座標」強行解構（Decompose）進本體物件屬性中，破解視體裁剪隱形 Bug
+            const worldMatrix = cardPlane.matrixWorld.clone();
+            scene.add(cardPlane); 
+            cardPlane.matrixAutoUpdate = true;
+            cardPlane.matrix.copy(worldMatrix);
+            cardPlane.matrix.decompose(cardPlane.position, cardPlane.quaternion, cardPlane.scale);
             
-            // 斷開 MindAR 的主渲染迴圈，防止它因為追蹤遺失重置相機
+            // 4. 斷開 MindAR 的主渲染關聯，啟動自主研發的獨立執行緒進行動態渲染
             mindarThree.renderer.setAnimationLoop(null);
             
-            // 凍結相機
-            mindarThree.camera.matrixAutoUpdate = false;
-            mindarThree.camera.matrixWorld.copy(savedCameraMatrix);
-            mindarThree.camera.matrixWorldInverse.copy(savedCameraMatrix).invert();
-            
-            // 將撲克牌移出追蹤群組，直接掛在場景根節點下，並凍結其 3D 空間坐標
-            scene.add(cardPlane);
-            cardPlane.matrixAutoUpdate = false;
-            cardPlane.matrixWorld.copy(savedCardMatrix);
-            
-            // 啟動自主設計的「靜態安全渲染執行緒」
             function staticRenderLoop() {
-                mindarThree.renderer.render(scene, mindarThree.camera);
+                if (mindarThree && mindarThree.renderer) {
+                    mindarThree.renderer.render(scene, staticCamera);
+                }
                 if (!animationComplete) {
                     requestAnimationFrame(staticRenderLoop);
                 }
             }
             requestAnimationFrame(staticRenderLoop);
 
-            // 注入透明防護觸控層
+            // 5. 注入高階透明點擊接收層
             const clickOverlay = document.createElement('div');
             clickOverlay.id = "absolute-touch-catcher";
             clickOverlay.className = "fixed inset-0 w-screen h-screen bg-transparent z-[999999] cursor-pointer touch-none";
@@ -495,7 +494,7 @@
                     animationStarted = true;
                     executeReveal();
                 } else {
-                    if (navigator.vibrate) navigator.vibrate(20); // 尚未輸入時點擊，輕微震動回饋暗示能量傳遞
+                    if (navigator.vibrate) navigator.vibrate(20); 
                 }
             };
 
@@ -527,18 +526,20 @@
                 cardMaterial.map = texture; cardMaterial.needsUpdate = true;
                 let opacityVal = 0;
                 const fadeInterval = setInterval(() => {
-                    opacityVal += 0.01;
+                    opacityVal += 0.02; // 稍微調快漸顯速度，體感更絲滑
                     if (opacityVal >= 1.0) {
                         opacityVal = 1.0; clearInterval(fadeInterval);
                         bakeScreenToSaveableImage();
                     }
                     cardMaterial.opacity = opacityVal;
-                }, 40); 
+                }, 30); 
+            }, undefined, (err) => {
+                console.error("撲克牌貼圖加載失敗，路徑檢測：", imagePath, err);
             });
         }
 
         function bakeScreenToSaveableImage() {
-            animationComplete = true; // 停止自製渲染迴圈
+            animationComplete = true; 
             
             const video = document.querySelector('#robot-camera-view-container video');
             const webglCanvas = document.querySelector('#robot-camera-view-container canvas');
@@ -548,7 +549,6 @@
             finalCanvas.width = webglCanvas.width; finalCanvas.height = webglCanvas.height;
             const ctx = finalCanvas.getContext('2d');
 
-            // ✨ 如果是前置鏡頭，最後烘焙出來的照片也同步進行水平翻轉，確保所見即所得
             if (chosenFacingMode === 'user') {
                 ctx.translate(finalCanvas.width, 0);
                 ctx.scale(-1, 1);
@@ -564,7 +564,10 @@
             }
             ctx.drawImage(video, sx, sy, sw, sh, 0, 0, finalCanvas.width, finalCanvas.height);
 
-            if (mindarThree) { mindarThree.renderer.render(mindarThree.scene, mindarThree.camera); }
+            // 烘焙時，同步使用時空複製人相機進行最終高畫質印製
+            if (mindarThree && window.currentStaticCamera) { 
+                mindarThree.renderer.render(scene, window.currentStaticCamera); 
+            }
             ctx.drawImage(webglCanvas, 0, 0, finalCanvas.width, finalCanvas.height);
 
             const dataUrl = finalCanvas.toDataURL('image/jpeg', 0.95);
