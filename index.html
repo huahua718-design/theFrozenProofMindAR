@@ -41,6 +41,12 @@
             object-fit: cover !important;
         }
 
+        /* ✨ 修改 2：前置鏡頭智慧鏡像翻轉 */
+        .camera-mirrored video,
+        .camera-mirrored canvas {
+            transform: scaleX(-1) !important;
+        }
+
         /* 最終生成照片解鎖長按儲存 */
         .saveable-magic-photo {
             position: fixed !important;
@@ -55,7 +61,7 @@
             pointer-events: auto !important;
         }
 
-        /* 頂級畫廊款：極慢速優雅呼吸燈 (2.5秒循環) */
+        /* 頂級畫廊款：極慢速優雅呼吸燈 */
         .ghost-pulse {
             animation: ghostPulse 2.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
         }
@@ -112,7 +118,7 @@
         }
 
         // ==========================================
-        // 【魔術師端】序列排隊與即時三態燈號系統
+        // 【魔術師端】不變
         // ==========================================
         let currentTargetIndex = 1; 
         let globalTotalPlayers = 0; 
@@ -247,15 +253,15 @@
         }
 
         // ==========================================
-        // 【觀眾端】✨ 獨立時空魔法引擎
+        // 【觀眾端】✨ 頂級時空鎖定引擎
         // ==========================================
         let mindarThree = null; let cardMaterial = null; let cardPlane = null; let scene = null;
         let hasTriggered = false; let forcedCardName = null; let chosenFacingMode = 'environment';
         let myPlayerIndex = null; let isCameraReady = false;
         
-        // 新增控制變數：追蹤觀眾點擊狀態與變牌狀態
         let userClickedReveal = false;
         let animationStarted = false;
+        let animationComplete = false; // 用於控制自製靜態渲染迴圈
 
         const originalGetUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
         navigator.mediaDevices.getUserMedia = function(constraints) {
@@ -277,7 +283,7 @@
                     <div id="splash-text-container" class="text-center space-y-6 transition-all duration-500 ease-in-out">
                         <div class="space-y-2.5">
                             <h1 class="text-zinc-200 text-xl sm:text-2xl font-light tracking-[0.4em] font-serif pr-[-0.4em]">
-                                記憶留痕
+                                記憶流痕
                             </h1>
                             <p class="text-zinc-500 text-[10px] sm:text-xs font-light tracking-[0.25em] uppercase font-mono">
                                 ─ The Frozen Proof ─
@@ -334,8 +340,17 @@
                 const threeModule = await import("three"); window.THREE = threeModule; 
                 const mindarModule = await import("https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-three.prod.js");
                 
+                const container = document.getElementById('robot-camera-view-container');
+                
+                // ✨ 處理前置鏡頭水平鏡像樣式
+                if (chosenFacingMode === 'user') {
+                    container.classList.add('camera-mirrored');
+                } else {
+                    container.classList.remove('camera-mirrored');
+                }
+                
                 mindarThree = new mindarModule.MindARThree({
-                    container: document.getElementById('robot-camera-view-container'),
+                    container: container,
                     imageTargetSrc: './targets.mind',
                     uiLoading: "no", uiScanning: "no", uiError: "no",
                     rendererOptions: { preserveDrawingBuffer: true }
@@ -350,7 +365,7 @@
                 const anchor = mindarThree.addAnchor(0);
                 anchor.group.add(cardPlane);
 
-                // 🚀 【修改 2的核心】：移除 forcedCardName 的檢查！一對準鬼牌立刻開拍定格！
+                // 一對準立刻開拍倒數，不等待魔術師輸入
                 anchor.onTargetFound = () => {
                     if (!hasTriggered) {
                         hasTriggered = true;
@@ -390,7 +405,7 @@
                 if (data && data.forcedCard) {
                     forcedCardName = data.forcedCard;
                     
-                    // 🚀 如果觀眾已經心急先點了螢幕，而此時魔術師剛好輸入完畢，立刻啟動顯影變牌！
+                    // 如果觀眾已經先點擊螢幕，而此時魔術師輸入傳入，立刻解鎖顯影
                     if (userClickedReveal && !animationStarted) {
                         db.ref(`rooms/${baseRoom}/cards/${myPlayerIndex}`).off();
                         const clickOverlay = document.getElementById('absolute-touch-catcher');
@@ -420,6 +435,7 @@
             showNextNumber();
         }
 
+        // ✨ 修改 1：頂級時空矩陣鎖定核心
         function triggerCameraShutter() {
             const overlay = document.getElementById('countdown-overlay');
             const flash = document.getElementById('shutter-flash');
@@ -429,10 +445,39 @@
             flash.style.opacity = "0.9";
             setTimeout(() => { flash.style.opacity = "0"; }, 150);
 
-            if (video) { video.pause(); } // 完美將此時此刻實體拍攝的鬼牌畫面完全凍結！
-            if (scene && cardPlane) { scene.attach(cardPlane); }
+            if (video) { video.pause(); } 
 
-            // 注入高階隱形防護網層，準備捕捉點擊
+            // 🎯 【關鍵核心】：在定格的瞬間，強行演算並備份 3D 世界座標與相機角度
+            mindarThree.renderer.render(scene, mindarThree.camera); 
+            cardPlane.updateMatrixWorld(true);
+            mindarThree.camera.updateMatrixWorld(true);
+            
+            const savedCameraMatrix = mindarThree.camera.matrixWorld.clone();
+            const savedCardMatrix = cardPlane.matrixWorld.clone();
+            
+            // 斷開 MindAR 的主渲染迴圈，防止它因為追蹤遺失重置相機
+            mindarThree.renderer.setAnimationLoop(null);
+            
+            // 凍結相機
+            mindarThree.camera.matrixAutoUpdate = false;
+            mindarThree.camera.matrixWorld.copy(savedCameraMatrix);
+            mindarThree.camera.matrixWorldInverse.copy(savedCameraMatrix).invert();
+            
+            // 將撲克牌移出追蹤群組，直接掛在場景根節點下，並凍結其 3D 空間坐標
+            scene.add(cardPlane);
+            cardPlane.matrixAutoUpdate = false;
+            cardPlane.matrixWorld.copy(savedCardMatrix);
+            
+            // 啟動自主設計的「靜態安全渲染執行緒」
+            function staticRenderLoop() {
+                mindarThree.renderer.render(scene, mindarThree.camera);
+                if (!animationComplete) {
+                    requestAnimationFrame(staticRenderLoop);
+                }
+            }
+            requestAnimationFrame(staticRenderLoop);
+
+            // 注入透明防護觸控層
             const clickOverlay = document.createElement('div');
             clickOverlay.id = "absolute-touch-catcher";
             clickOverlay.className = "fixed inset-0 w-screen h-screen bg-transparent z-[999999] cursor-pointer touch-none";
@@ -442,17 +487,15 @@
                 if (e) { e.preventDefault(); e.stopPropagation(); }
                 if (animationStarted) return;
                 
-                userClickedReveal = true; // 標記觀眾已有點擊意願
+                userClickedReveal = true; 
                 
-                // 🚀 如果魔術師早就輸入好了（常規狀況）
                 if (forcedCardName) {
                     db.ref(`rooms/${baseRoom}/cards/${myPlayerIndex}`).off();
                     clickOverlay.remove();
                     animationStarted = true;
                     executeReveal();
                 } else {
-                    // 如果魔術師還在裝模作樣還沒輸入，觀眾點擊會觸發極輕微震動，手機假裝正在與宇宙能量連結，默默等待訊號傳入
-                    if (navigator.vibrate) navigator.vibrate(20);
+                    if (navigator.vibrate) navigator.vibrate(20); // 尚未輸入時點擊，輕微震動回饋暗示能量傳遞
                 }
             };
 
@@ -462,7 +505,6 @@
             }, 350);
         }
 
-        // 執行變牌漸顯動畫
         function executeReveal() {
             const imagePath = getBicycleImagePath(forcedCardName);
             startRevealAnimation(imagePath);
@@ -496,6 +538,8 @@
         }
 
         function bakeScreenToSaveableImage() {
+            animationComplete = true; // 停止自製渲染迴圈
+            
             const video = document.querySelector('#robot-camera-view-container video');
             const webglCanvas = document.querySelector('#robot-camera-view-container canvas');
             if (!video || !webglCanvas) return;
@@ -503,6 +547,12 @@
             const finalCanvas = document.createElement('canvas');
             finalCanvas.width = webglCanvas.width; finalCanvas.height = webglCanvas.height;
             const ctx = finalCanvas.getContext('2d');
+
+            // ✨ 如果是前置鏡頭，最後烘焙出來的照片也同步進行水平翻轉，確保所見即所得
+            if (chosenFacingMode === 'user') {
+                ctx.translate(finalCanvas.width, 0);
+                ctx.scale(-1, 1);
+            }
 
             const videoRatio = video.videoWidth / video.videoHeight;
             const canvasRatio = finalCanvas.width / finalCanvas.height;
