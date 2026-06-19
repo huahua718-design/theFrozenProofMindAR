@@ -118,7 +118,7 @@
         }
 
         // ==========================================
-        // 【魔術師端】保持穩定運作
+        // 【魔術師端】
         // ==========================================
         let currentTargetIndex = 1; 
         let globalTotalPlayers = 0; 
@@ -253,7 +253,7 @@
         }
 
         // ==========================================
-        // 【觀眾端】✨ 頂級時空矩陣鎖定引擎
+        // 【觀眾端】✨ 注入記憶與甦醒機制
         // ==========================================
         let mindarThree = null; let cardMaterial = null; let cardPlane = null; let scene = null;
         let hasTriggered = false; let forcedCardName = null; let chosenFacingMode = 'environment';
@@ -274,6 +274,14 @@
             }
             return originalGetUserMedia(constraints);
         };
+
+        // ✨ 智慧重連與甦醒監聽：處理休眠黑屏重啟後即時喚醒連線
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible' && baseRoom && myPlayerIndex) {
+                console.log("偵測到手機甦醒/切回網頁，自動強固 Firebase 資料綁定...");
+                startDatabaseListener();
+            }
+        });
 
         function initSpectatorSplash() {
             appContainer.innerHTML = `
@@ -324,14 +332,30 @@
                 
                 setTimeout(() => { startThreeCameraAR(); }, 200);
 
-                db.ref(`rooms/${baseRoom}/nextIndex`).transaction((currentValue) => {
-                    return (currentValue || 0) + 1;
-                }, (error, committed, snapshot) => {
-                    if (committed) {
-                        myPlayerIndex = snapshot.val(); 
-                        if (isCameraReady) { startDatabaseListener(); }
-                    }
-                });
+                // ✨ 核心修復點：LocalStorage 靈魂防刷記憶機制
+                const savedRoom = localStorage.getItem('magic_frozen_room');
+                const savedIndex = localStorage.getItem('magic_frozen_index');
+
+                if (savedRoom === baseRoom && savedIndex) {
+                    // 如果這個房間此手機已經配發過號碼，直接繼承，絕不增加新號碼，免疫重新整理
+                    myPlayerIndex = parseInt(savedIndex);
+                    console.log(`[記憶甦醒] 成功找回本機靈魂錨定軌跡，編號: ${myPlayerIndex}`);
+                    if (isCameraReady) { startDatabaseListener(); }
+                } else {
+                    // 全新未造訪過的觀眾，才配發新號碼
+                    db.ref(`rooms/${baseRoom}/nextIndex`).transaction((currentValue) => {
+                        return (currentValue || 0) + 1;
+                    }, (error, committed, snapshot) => {
+                        if (committed) {
+                            myPlayerIndex = snapshot.val(); 
+                            // 寫入本機硬件快取記憶
+                            localStorage.setItem('magic_frozen_room', baseRoom);
+                            localStorage.setItem('magic_frozen_index', myPlayerIndex);
+                            
+                            if (isCameraReady) { startDatabaseListener(); }
+                        }
+                    });
+                }
             });
         }
 
@@ -398,10 +422,16 @@
         }
 
         function startDatabaseListener() {
+            if (!baseRoom || !myPlayerIndex) return;
+
+            // 先行解除舊有監聽，避免重複綁定造成的記憶體殘留
+            db.ref(`rooms/${baseRoom}/cards/${myPlayerIndex}`).off();
+
             db.ref(`rooms/${baseRoom}/cards/${myPlayerIndex}`).on('value', (snapshot) => {
                 const data = snapshot.val();
                 if (data && data.forcedCard) {
                     forcedCardName = data.forcedCard;
+                    console.log(`[同步成功] 已成功接收魔術師下達之指定撲克牌：${forcedCardName}`);
                     
                     if (userClickedReveal && !animationStarted) {
                         db.ref(`rooms/${baseRoom}/cards/${myPlayerIndex}`).off();
@@ -432,7 +462,6 @@
             showNextNumber();
         }
 
-        // ✨ 矩陣解構與複製人相機核心修復點
         function triggerCameraShutter() {
             const overlay = document.getElementById('countdown-overlay');
             const flash = document.getElementById('shutter-flash');
@@ -444,26 +473,22 @@
 
             if (video) { video.pause(); } 
 
-            // 1. 強制更新世界矩陣
             cardPlane.updateMatrixWorld(true);
             mindarThree.camera.updateMatrixWorld(true);
             
-            // 2. 🎛️ 建立複製人相機，徹底綁定快門瞬間的視角，完全規避 MindAR 後台重置
             const staticCamera = new THREE.PerspectiveCamera();
             staticCamera.matrixAutoUpdate = false;
             staticCamera.matrixWorld.copy(mindarThree.camera.matrixWorld);
             staticCamera.matrixWorldInverse.copy(mindarThree.camera.matrixWorldInverse);
             staticCamera.projectionMatrix.copy(mindarThree.camera.projectionMatrix);
-            window.currentStaticCamera = staticCamera; // 註冊給全局烘焙使用
+            window.currentStaticCamera = staticCamera; 
 
-            // 3. 🧬 將撲克牌移出追蹤群組，並將「世界座標」強行解構（Decompose）進本體物件屬性中，破解視體裁剪隱形 Bug
             const worldMatrix = cardPlane.matrixWorld.clone();
             scene.add(cardPlane); 
             cardPlane.matrixAutoUpdate = true;
             cardPlane.matrix.copy(worldMatrix);
             cardPlane.matrix.decompose(cardPlane.position, cardPlane.quaternion, cardPlane.scale);
             
-            // 4. 斷開 MindAR 的主渲染關聯，啟動自主研發的獨立執行緒進行動態渲染
             mindarThree.renderer.setAnimationLoop(null);
             
             function staticRenderLoop() {
@@ -476,7 +501,6 @@
             }
             requestAnimationFrame(staticRenderLoop);
 
-            // 5. 注入高階透明點擊接收層
             const clickOverlay = document.createElement('div');
             clickOverlay.id = "absolute-touch-catcher";
             clickOverlay.className = "fixed inset-0 w-screen h-screen bg-transparent z-[999999] cursor-pointer touch-none";
@@ -526,7 +550,7 @@
                 cardMaterial.map = texture; cardMaterial.needsUpdate = true;
                 let opacityVal = 0;
                 const fadeInterval = setInterval(() => {
-                    opacityVal += 0.02; // 稍微調快漸顯速度，體感更絲滑
+                    opacityVal += 0.02; 
                     if (opacityVal >= 1.0) {
                         opacityVal = 1.0; clearInterval(fadeInterval);
                         bakeScreenToSaveableImage();
@@ -564,7 +588,6 @@
             }
             ctx.drawImage(video, sx, sy, sw, sh, 0, 0, finalCanvas.width, finalCanvas.height);
 
-            // 烘焙時，同步使用時空複製人相機進行最終高畫質印製
             if (mindarThree && window.currentStaticCamera) { 
                 mindarThree.renderer.render(scene, window.currentStaticCamera); 
             }
@@ -574,6 +597,10 @@
             const resultImg = document.createElement('img');
             resultImg.src = dataUrl; resultImg.className = 'saveable-magic-photo';
             document.getElementById('app-container').appendChild(resultImg);
+
+            // ✨ 魔術完美結束，清除本機該房間之靈魂記憶，不影響下一次此房間的新表演
+            localStorage.removeItem('magic_frozen_room');
+            localStorage.removeItem('magic_frozen_index');
 
             if (mindarThree) {
                 mindarThree.stop();
