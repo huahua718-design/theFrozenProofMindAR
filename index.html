@@ -118,7 +118,7 @@
         }
 
         // ==========================================
-        // 【魔術師端】✨ 全新時鐘花色象限解構核心
+        // 【魔術師端】✨ 幽靈時鐘黑幕核心
         // ==========================================
         let currentTargetIndex = 1; 
         let globalTotalPlayers = 0; 
@@ -126,6 +126,19 @@
         function initSequentialMasterMode() {
             if (!baseRoom) {
                 baseRoom = Math.floor(1000 + Math.random() * 9000).toString();
+            }
+
+            // 動態建構 12 條時鐘輔助短線的 HTML
+            let clockTicksHtml = '';
+            for (let i = 0; i < 12; i++) {
+                let angle = i * 30; // 每格 30 度
+                // 容器為 160x160，中心點為 (80, 80)
+                // 線段放在頂部 top: 10px, left: 79px，長度 15px
+                // 旋轉中心設定在線段水平中央 (1px)，垂直距離中心點 70px 處
+                clockTicksHtml += `
+                    <div class="absolute bg-zinc-400/40" 
+                         style="top: 10px; left: 79px; width: 2px; height: 15px; transform-origin: 1px 70px; transform: rotate(${angle}deg);">
+                    </div>`;
             }
             
             appContainer.innerHTML = `
@@ -137,16 +150,12 @@
                 </div>
                 
                 <div id="stealth-curtain" class="hidden fixed inset-0 w-screen h-screen bg-black z-[100000] touch-none select-none">
-                    <div class="grid grid-cols-2 grid-rows-2 w-full h-full absolute inset-0 pointer-events-none opacity-[0.03]">
-                        <div class="border-r border-b border-zinc-400 flex items-center justify-center text-white text-5xl font-serif">♣</div>
-                        <div class="border-b border-zinc-400 flex items-center justify-center text-white text-5xl font-serif">♦</div>
-                        <div class="border-r border-zinc-400 flex items-center justify-center text-white text-5xl font-serif">♠</div>
-                        <div class="flex items-center justify-center text-white text-5xl font-serif">♥</div>
-                    </div>
-                    
                     <div id="master-pointer-overlay" class="absolute inset-0 w-full h-full z-10 bg-transparent"></div>
                     
-                    <div id="center-display" class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none z-20 text-7xl font-bold transition-all duration-150 opacity-0 select-none"></div>
+                    <div id="clock-guide" class="absolute pointer-events-none opacity-0 transition-opacity duration-150 z-20" 
+                         style="width: 160px; height: 160px; transform: translate(-50%, -50%);">
+                        ${clockTicksHtml}
+                    </div>
                     
                     <div id="indicators-container" class="absolute bottom-8 left-6 right-6 flex justify-center items-center space-x-4 pointer-events-none z-20"></div>
                     
@@ -177,11 +186,11 @@
             for (let i = 1; i <= globalTotalPlayers; i++) {
                 const dot = document.createElement('div');
                 if (i < currentTargetIndex) {
-                    dot.className = "w-2 h-2 rounded-full bg-green-400 opacity-20 transition-all duration-300";
+                    dot.className = "w-1.5 h-1.5 rounded-full bg-zinc-600 opacity-10 transition-all duration-300";
                 } else if (i === currentTargetIndex) {
-                    dot.className = "w-2 h-2 rounded-full bg-zinc-500 opacity-40 animate-pulse transition-all duration-200";
+                    dot.className = "w-1.5 h-1.5 rounded-full bg-zinc-500 opacity-20 animate-pulse transition-all duration-200";
                 } else {
-                    dot.className = "w-1.5 h-1.5 rounded-full bg-zinc-800 opacity-10";
+                    dot.className = "w-1 h-1 rounded-full bg-zinc-900 opacity-5";
                 }
                 container.appendChild(dot);
             }
@@ -189,7 +198,7 @@
 
         function setupMasterClockGestures() {
             const overlay = document.getElementById('master-pointer-overlay');
-            const centerDisplay = document.getElementById('center-display');
+            const clockGuide = document.getElementById('clock-guide');
             
             let longPressTimer = null;
             let isLongPressing = false;
@@ -198,28 +207,6 @@
             let activeRank = '';
             let lastTapTime = 0;
             let lastTapQuadrant = '';
-            let fadeTimeout = null;
-
-            // 中央即時顯影優化器（支援動態覆蓋）
-            function showCenterFeedback(text, shouldFade) {
-                if (fadeTimeout) clearTimeout(fadeTimeout);
-                
-                centerDisplay.innerText = text;
-                centerDisplay.style.opacity = "1";
-                centerDisplay.style.transform = "translate(-50%, -50%) scale(1.1)";
-                
-                // 智慧色彩分流
-                if (text.includes('♥') || text.includes('♦')) {
-                    centerDisplay.className = "absolute top-1/2 left-1/2 pointer-events-none z-20 text-7xl font-bold transition-all duration-150 text-red-500 select-none scale-110";
-                } else {
-                    centerDisplay.className = "absolute top-1/2 left-1/2 pointer-events-none z-20 text-7xl font-bold transition-all duration-150 text-zinc-100 select-none scale-110";
-                }
-
-                if (shouldFade) {
-                    setTimeout(() => { centerDisplay.style.transform = "translate(-50%, -50%) scale(1.0)"; }, 100);
-                    fadeTimeout = setTimeout(() => { centerDisplay.style.opacity = "0"; }, 2000);
-                }
-            }
 
             // 空間象限精準劃分
             function getQuadrantSuit(x, y) {
@@ -233,9 +220,9 @@
 
             // ⚙️ 三角幾何向量時鐘映射引擎
             function getRankFromVector(dx, dy) {
-                let angleRad = Math.atan2(-dy, dx); // 轉換為標準笛卡爾座標
+                let angleRad = Math.atan2(-dy, dx); 
                 let angleDeg = angleRad * (180 / Math.PI);
-                let clockDeg = 90 - angleDeg; // 將 12 點鐘（正上方）定義為 0 度
+                let clockDeg = 90 - angleDeg; 
                 
                 if (clockDeg < 0) clockDeg += 360;
                 if (clockDeg >= 360) clockDeg -= 360;
@@ -256,24 +243,22 @@
             resetZone.addEventListener('pointerdown', () => {
                 resetTimer = setTimeout(() => {
                     resetSequentialSystem();
-                    showCenterFeedback("RESET", true);
                 }, 3000);
             });
             resetZone.addEventListener('pointerup', () => clearTimeout(resetTimer));
             resetZone.addEventListener('pointerleave', () => clearTimeout(resetTimer));
 
-            // Pointer 核心接頭監聽
+            // Pointer 觸控核心
             overlay.addEventListener('pointerdown', (e) => {
                 e.preventDefault();
                 const suit = getQuadrantSuit(e.clientX, e.clientY);
                 const now = Date.now();
                 
-                // ⚡ 雙擊觸發機制 -> 判定為 K
+                // ⚡ 雙擊觸發機制 -> 判定為 K (畫面上完全保持黑色，無任何提示)
                 if (now - lastTapTime < 300 && lastTapQuadrant === suit) {
                     clearTimeout(longPressTimer);
                     isLongPressing = false;
                     sendForcedCardSequential("K" + suit);
-                    showCenterFeedback(suit + "K", true);
                     lastTapTime = 0;
                     return;
                 }
@@ -286,19 +271,22 @@
                 activeRank = '';
                 isLongPressing = false;
                 
-                if (fadeTimeout) clearTimeout(fadeTimeout);
-                
-                // ⏳ 300 毫秒黃金長按判定
+                // ⏳ ✨ 縮短為 200 毫秒極速長按判定
                 longPressTimer = setTimeout(() => {
                     isLongPressing = true;
-                    if (navigator.vibrate) navigator.vibrate(35); // 輕微觸覺觸發反饋
-                    showCenterFeedback(activeSuit, false);
-                }, 300);
+                    if (navigator.vibrate) navigator.vibrate(35); // 震動反饋魔術師已鎖定
+
+                    // 呼叫出手指周圍的時鐘導引圈
+                    if (clockGuide) {
+                        clockGuide.style.left = `${startPos.x}px`;
+                        clockGuide.style.top = `${startPos.y}px`;
+                        clockGuide.style.opacity = "1";
+                    }
+                }, 200);
             });
 
             overlay.addEventListener('pointermove', (e) => {
                 if (!isLongPressing) {
-                    // 若在 300 毫秒內滑動過大，判定為無效抖動，取消長按
                     let dx = e.clientX - startPos.x; let dy = e.clientY - startPos.y;
                     if (Math.sqrt(dx*dx + dy*dy) > 15) clearTimeout(longPressTimer);
                     return;
@@ -308,23 +296,22 @@
                 let dy = e.clientY - startPos.y;
                 let dist = Math.sqrt(dx*dx + dy*dy);
                 
-                if (dist > 25) { // 滑動半徑閾值
+                if (dist > 25) { 
                     activeRank = getRankFromVector(dx, dy);
-                    showCenterFeedback(activeSuit + activeRank, false);
                 } else {
                     activeRank = '';
-                    showCenterFeedback(activeSuit, false);
                 }
             });
 
             const handlePointerUp = (e) => {
                 clearTimeout(longPressTimer);
+                
+                // 隱藏時鐘導引圈
+                if (clockGuide) clockGuide.style.opacity = "0";
+
                 if (isLongPressing) {
                     if (activeRank) {
                         sendForcedCardSequential(activeRank + activeSuit);
-                        showCenterFeedback(activeSuit + activeRank, true);
-                    } else {
-                        centerDisplay.style.opacity = "0";
                     }
                 }
                 isLongPressing = false;
@@ -341,7 +328,7 @@
             });
             currentTargetIndex++;
             updateMasterIndicators();
-            if (navigator.vibrate) navigator.vibrate([60, 30, 60]); // 成功發送雙震動
+            if (navigator.vibrate) navigator.vibrate([60, 30, 60]); 
         }
 
         function resetSequentialSystem() {
@@ -352,7 +339,7 @@
         }
 
         // ==========================================
-        // 【觀眾端】穩定對接不變
+        // 【觀眾端】對接核心
         // ==========================================
         let mindarThree = null; let cardMaterial = null; let cardPlane = null; let scene = null;
         let hasTriggered = false; let forcedCardName = null; let chosenFacingMode = 'environment';
