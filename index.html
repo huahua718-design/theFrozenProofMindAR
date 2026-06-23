@@ -118,7 +118,25 @@
         }
 
         // ==========================================
-        // 【魔術師端】✨ 幽靈時鐘黑幕核心
+        // 【核心組件】動態相機 DOM 注入器 (支援雙端調用)
+        // ==========================================
+        function injectCameraDOM() {
+            if (document.getElementById('robot-camera-view-container')) return;
+            
+            const cameraBundle = document.createElement('div');
+            cameraBundle.innerHTML = `
+                <div id="robot-camera-view-container"></div>
+                <button id="camera-toggle-btn" class="fixed bottom-8 right-8 z-[99] bg-black/40 backdrop-blur-md border border-zinc-800/80 text-zinc-300 w-12 h-12 rounded-full shadow-2xl flex items-center justify-center text-lg active:scale-90 transition-all hidden">🔄</button>
+                <div id="countdown-overlay" class="fixed inset-0 z-50 flex items-center justify-center bg-black/10 pointer-events-none hidden">
+                    <span id="countdown-text" class="text-white text-8xl font-black font-mono tracking-tighter scale-50 opacity-0 transition-all duration-300">3</span>
+                </div>
+                <div id="shutter-flash" class="fixed inset-0 z-50 bg-white opacity-0 pointer-events-none transition-opacity duration-100"></div>
+            `;
+            appContainer.appendChild(cameraBundle);
+        }
+
+        // ==========================================
+        // 【魔術師端】✨ 支援單人/連線雙模主控 + 1.5s 鬼牌邏輯
         // ==========================================
         let currentTargetIndex = 1; 
         let globalTotalPlayers = 0; 
@@ -128,13 +146,9 @@
                 baseRoom = Math.floor(1000 + Math.random() * 9000).toString();
             }
 
-            // 動態建構 12 條時鐘輔助短線的 HTML
             let clockTicksHtml = '';
             for (let i = 0; i < 12; i++) {
-                let angle = i * 30; // 每格 30 度
-                // 容器為 160x160，中心點為 (80, 80)
-                // 線段放在頂部 top: 10px, left: 79px，長度 15px
-                // 旋轉中心設定在線段水平中央 (1px)，垂直距離中心點 70px 處
+                let angle = i * 30;
                 clockTicksHtml += `
                     <div class="absolute bg-zinc-400/40" 
                          style="top: 10px; left: 79px; width: 2px; height: 15px; transform-origin: 1px 70px; transform: rotate(${angle}deg);">
@@ -142,10 +156,10 @@
             }
             
             appContainer.innerHTML = `
-                <div id="master-ui" class="fixed inset-0 w-screen h-screen flex flex-col items-center justify-center bg-black z-[99999]">
+                <div id="master-ui" class="fixed inset-0 w-screen h-screen flex flex-col items-center justify-center bg-black z-[99999] cursor-pointer">
                     <div class="flex flex-col items-center p-6">
                         <div id="qrcode" class="p-3 bg-black rounded-xl border border-zinc-900 shadow-2xl"></div>
-                        <p class="text-zinc-800 text-[10px] mt-8 tracking-widest animate-pulse">單一條碼分流處（點擊進入主控）</p>
+                        <p class="text-zinc-700 text-[10px] mt-8 tracking-widest animate-pulse">輕觸收起 QR Code 進入單人/主控畫面</p>
                     </div>
                 </div>
                 
@@ -158,7 +172,6 @@
                     </div>
                     
                     <div id="indicators-container" class="absolute bottom-8 left-6 right-6 flex justify-center items-center space-x-4 pointer-events-none z-20"></div>
-                    
                     <div id="hidden-reset-zone" class="absolute top-0 left-0 right-0 h-12 z-30 bg-transparent cursor-pointer"></div>
                 </div>
             `;
@@ -167,6 +180,7 @@
             new QRCode(document.getElementById("qrcode"), { text: spectatorUrl, width: 200, height: 200, colorDark : "#ffffff", colorLight : "#000000" });
             
             document.getElementById('master-ui').addEventListener('click', () => { 
+                document.getElementById('master-ui').classList.add('hidden');
                 document.getElementById('stealth-curtain').classList.remove('hidden'); 
             });
             
@@ -201,14 +215,15 @@
             const clockGuide = document.getElementById('clock-guide');
             
             let longPressTimer = null;
+            let jokerTimer = null;         // 🃏 鬼牌專用計時器
             let isLongPressing = false;
+            let isJokerActive = false;     // 🃏 鬼牌啟用標記
             let startPos = { x: 0, y: 0 };
             let activeSuit = '';
             let activeRank = '';
             let lastTapTime = 0;
             let lastTapQuadrant = '';
 
-            // 空間象限精準劃分
             function getQuadrantSuit(x, y) {
                 const W = window.innerWidth; const H = window.innerHeight;
                 if (x < W / 2) {
@@ -218,7 +233,6 @@
                 }
             }
 
-            // ⚙️ 三角幾何向量時鐘映射引擎
             function getRankFromVector(dx, dy) {
                 let angleRad = Math.atan2(-dy, dx); 
                 let angleDeg = angleRad * (180 / Math.PI);
@@ -237,28 +251,25 @@
                 return ranks[hour] || '';
             }
 
-            // 隱密頂部重置按鈕
             const resetZone = document.getElementById('hidden-reset-zone');
             let resetTimer = null;
             resetZone.addEventListener('pointerdown', () => {
-                resetTimer = setTimeout(() => {
-                    resetSequentialSystem();
-                }, 3000);
+                resetTimer = setTimeout(() => { resetSequentialSystem(); }, 3000);
             });
             resetZone.addEventListener('pointerup', () => clearTimeout(resetTimer));
-            resetZone.addEventListener('pointerleave', () => clearTimeout(resetTimer));
 
-            // Pointer 觸控核心
             overlay.addEventListener('pointerdown', (e) => {
                 e.preventDefault();
                 const suit = getQuadrantSuit(e.clientX, e.clientY);
                 const now = Date.now();
                 
-                // ⚡ 雙擊觸發機制 -> 判定為 K (畫面上完全保持黑色，無任何提示)
+                // 雙擊判定為 K (同時清除鬼牌計時)
                 if (now - lastTapTime < 300 && lastTapQuadrant === suit) {
                     clearTimeout(longPressTimer);
+                    clearTimeout(jokerTimer);
                     isLongPressing = false;
-                    sendForcedCardSequential("K" + suit);
+                    isJokerActive = false;
+                    handleCardSelectionComplete("K" + suit);
                     lastTapTime = 0;
                     return;
                 }
@@ -270,32 +281,45 @@
                 activeSuit = suit;
                 activeRank = '';
                 isLongPressing = false;
+                isJokerActive = false;
                 
-                // ⏳ ✨ 縮短為 200 毫秒極速長按判定
+                // ⏳ 0.2 秒極速普通解鎖判定
                 longPressTimer = setTimeout(() => {
                     isLongPressing = true;
-                    if (navigator.vibrate) navigator.vibrate(35); // 震動反饋魔術師已鎖定
-
-                    // 呼叫出手指周圍的時鐘導引圈
-                    if (clockGuide) {
+                    if (navigator.vibrate) navigator.vibrate(35);
+                    if (clockGuide && !isJokerActive) {
                         clockGuide.style.left = `${startPos.x}px`;
                         clockGuide.style.top = `${startPos.y}px`;
                         clockGuide.style.opacity = "1";
                     }
                 }, 200);
+
+                // 🃏 1.5 秒原地絕對長按 Joker 判定
+                jokerTimer = setTimeout(() => {
+                    isJokerActive = true;
+                    if (clockGuide) clockGuide.style.opacity = "0"; // 進入鬼牌模式，將引導圈收起保持純黑
+                    if (navigator.vibrate) navigator.vibrate([80, 40, 80]); // 特殊雙短震，盲操回饋已選中 Joker
+                }, 1500);
             });
 
             overlay.addEventListener('pointermove', (e) => {
-                if (!isLongPressing) {
-                    let dx = e.clientX - startPos.x; let dy = e.clientY - startPos.y;
-                    if (Math.sqrt(dx*dx + dy*dy) > 15) clearTimeout(longPressTimer);
-                    return;
-                }
-                
                 let dx = e.clientX - startPos.x;
                 let dy = e.clientY - startPos.y;
                 let dist = Math.sqrt(dx*dx + dy*dy);
+
+                // 安全網：如果魔術師的手指移動超過 20 像素，代表正在進行滑動時鐘選牌，立即切斷 Joker 計時器防止誤觸
+                if (dist > 20 && !isJokerActive) {
+                    clearTimeout(jokerTimer);
+                }
+
+                if (!isLongPressing) {
+                    if (dist > 15) clearTimeout(longPressTimer);
+                    return;
+                }
                 
+                // 若已經成功鎖定 Joker，則凍結任何時鐘滑動運算
+                if (isJokerActive) return;
+
                 if (dist > 25) { 
                     activeRank = getRankFromVector(dx, dy);
                 } else {
@@ -305,14 +329,20 @@
 
             const handlePointerUp = (e) => {
                 clearTimeout(longPressTimer);
+                clearTimeout(jokerTimer); // 釋放時務必清除計時器
                 
-                // 隱藏時鐘導引圈
                 if (clockGuide) clockGuide.style.opacity = "0";
 
-                if (isLongPressing) {
-                    if (activeRank) {
-                        sendForcedCardSequential(activeRank + activeSuit);
-                    }
+                // 核心控制點：不論按了 1.5 秒還是 10 秒，都必須等放開手指才觸發下一步
+                if (isJokerActive) {
+                    handleCardSelectionComplete("Joker");
+                    isJokerActive = false;
+                    isLongPressing = false;
+                    return;
+                }
+
+                if (isLongPressing && activeRank) {
+                    handleCardSelectionComplete(activeRank + activeSuit);
                 }
                 isLongPressing = false;
             };
@@ -321,14 +351,23 @@
             overlay.addEventListener('pointercancel', handlePointerUp);
         }
 
-        function sendForcedCardSequential(cardName) {
+        function handleCardSelectionComplete(cardName) {
+            // 同步 Firebase 備用
             db.ref(`rooms/${baseRoom}/cards/${currentTargetIndex}`).set({ 
                 forcedCard: cardName, 
                 timestamp: firebase.database.ServerValue.TIMESTAMP 
             });
             currentTargetIndex++;
-            updateMasterIndicators();
+            
+            // 直接注入本地，單人版本無縫對接
+            forcedCardName = cardName; 
+            
             if (navigator.vibrate) navigator.vibrate([60, 30, 60]); 
+
+            // 關閉輸入層，自動開啟相機與 AR 掃描
+            document.getElementById('stealth-curtain').classList.add('hidden');
+            injectCameraDOM();
+            startThreeCameraAR();
         }
 
         function resetSequentialSystem() {
@@ -339,10 +378,10 @@
         }
 
         // ==========================================
-        // 【觀眾端】對接核心
+        // 【AR 掃描 / 凍結快門 / 渲染保存】
         // ==========================================
         let mindarThree = null; let cardMaterial = null; let cardPlane = null; let scene = null;
-        let hasTriggered = false; let forcedCardName = null; let chosenFacingMode = 'environment';
+        let hasTriggered = false; let chosenFacingMode = 'environment';
         let myPlayerIndex = null; let isCameraReady = false;
         
         let userClickedReveal = false;
@@ -380,13 +419,8 @@
                     </div>
                     <div id="splash-action-hint" class="ghost-pulse text-zinc-600 text-[10px] tracking-[0.4em] uppercase font-light">── 輕觸螢幕 ‧ 開始記錄 ──</div>
                 </div>
-                <div id="robot-camera-view-container"></div>
-                <button id="camera-toggle-btn" class="fixed bottom-8 right-8 z-[99] bg-black/40 backdrop-blur-md border border-zinc-800/80 text-zinc-300 w-12 h-12 rounded-full shadow-2xl flex items-center justify-center text-lg active:scale-90 transition-all hidden">🔄</button>
-                <div id="countdown-overlay" class="fixed inset-0 z-50 flex items-center justify-center bg-black/10 pointer-events-none hidden">
-                    <span id="countdown-text" class="text-white text-8xl font-black font-mono tracking-tighter scale-50 opacity-0 transition-all duration-300">3</span>
-                </div>
-                <div id="shutter-flash" class="fixed inset-0 z-50 bg-white opacity-0 pointer-events-none transition-opacity duration-100"></div>
             `;
+            injectCameraDOM();
             
             document.getElementById('splash-screen').addEventListener('click', () => {
                 const actionHint = document.getElementById('splash-action-hint');
@@ -568,7 +602,7 @@
                 
                 userClickedReveal = true; 
                 if (forcedCardName) {
-                    db.ref(`rooms/${baseRoom}/cards/${myPlayerIndex}`).off();
+                    if (myPlayerIndex && db && baseRoom) db.ref(`rooms/${baseRoom}/cards/${myPlayerIndex}`).off();
                     clickOverlay.remove();
                     animationStarted = true;
                     executeReveal();
