@@ -118,11 +118,10 @@
         }
 
         // ==========================================
-        // 【魔術師端】
+        // 【魔術師端】✨ 全新時鐘花色象限解構核心
         // ==========================================
         let currentTargetIndex = 1; 
         let globalTotalPlayers = 0; 
-        let strokes = [];           
         
         function initSequentialMasterMode() {
             if (!baseRoom) {
@@ -136,8 +135,22 @@
                         <p class="text-zinc-800 text-[10px] mt-8 tracking-widest animate-pulse">單一條碼分流處（點擊進入主控）</p>
                     </div>
                 </div>
+                
                 <div id="stealth-curtain" class="hidden fixed inset-0 w-screen h-screen bg-black z-[100000] touch-none select-none">
-                    <div id="indicators-container" class="fixed bottom-8 left-6 right-6 flex justify-center items-center space-x-4 pointer-events-none"></div>
+                    <div class="grid grid-cols-2 grid-rows-2 w-full h-full absolute inset-0 pointer-events-none opacity-[0.03]">
+                        <div class="border-r border-b border-zinc-400 flex items-center justify-center text-white text-5xl font-serif">♣</div>
+                        <div class="border-b border-zinc-400 flex items-center justify-center text-white text-5xl font-serif">♦</div>
+                        <div class="border-r border-zinc-400 flex items-center justify-center text-white text-5xl font-serif">♠</div>
+                        <div class="flex items-center justify-center text-white text-5xl font-serif">♥</div>
+                    </div>
+                    
+                    <div id="master-pointer-overlay" class="absolute inset-0 w-full h-full z-10 bg-transparent"></div>
+                    
+                    <div id="center-display" class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none z-20 text-7xl font-bold transition-all duration-150 opacity-0 select-none"></div>
+                    
+                    <div id="indicators-container" class="absolute bottom-8 left-6 right-6 flex justify-center items-center space-x-4 pointer-events-none z-20"></div>
+                    
+                    <div id="hidden-reset-zone" class="absolute top-0 left-0 right-0 h-12 z-30 bg-transparent cursor-pointer"></div>
                 </div>
             `;
             
@@ -153,7 +166,7 @@
                 updateMasterIndicators();
             });
 
-            setupMasterSequentialGestures();
+            setupMasterClockGestures();
         }
 
         function updateMasterIndicators() {
@@ -164,74 +177,161 @@
             for (let i = 1; i <= globalTotalPlayers; i++) {
                 const dot = document.createElement('div');
                 if (i < currentTargetIndex) {
-                    dot.className = "w-2 h-2 rounded-full bg-green-400 opacity-40 transition-all duration-300";
+                    dot.className = "w-2 h-2 rounded-full bg-green-400 opacity-20 transition-all duration-300";
                 } else if (i === currentTargetIndex) {
-                    if (strokes.length === 1) {
-                        dot.className = "w-2 h-2 rounded-full bg-yellow-400 opacity-50 animate-pulse transition-all duration-200";
-                    } else {
-                        dot.className = "w-2 h-2 rounded-full bg-zinc-500 opacity-20 transition-all duration-200";
-                    }
+                    dot.className = "w-2 h-2 rounded-full bg-zinc-500 opacity-40 animate-pulse transition-all duration-200";
                 } else {
-                    dot.className = "w-1.5 h-1.5 rounded-full bg-zinc-700 opacity-10";
+                    dot.className = "w-1.5 h-1.5 rounded-full bg-zinc-800 opacity-10";
                 }
                 container.appendChild(dot);
             }
         }
 
-        let touchStartPos = null; let lastTapTime = 0; let pressTimer = null;
-        
-        function setupMasterSequentialGestures() {
-            const curtain = document.getElementById('stealth-curtain');
+        function setupMasterClockGestures() {
+            const overlay = document.getElementById('master-pointer-overlay');
+            const centerDisplay = document.getElementById('center-display');
             
-            curtain.addEventListener('touchstart', (e) => {
-                if (e.touches.length === 1) touchStartPos = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-                pressTimer = setTimeout(() => resetSequentialSystem(), 3000); 
-            });
-            
-            curtain.addEventListener('touchmove', () => clearTimeout(pressTimer));
-            
-            curtain.addEventListener('touchend', (e) => {
-                clearTimeout(pressTimer); if (!touchStartPos) return;
-                let x1 = touchStartPos.x, y1 = touchStartPos.y, x2 = e.changedTouches[0].clientX, y2 = e.changedTouches[0].clientY;
-                touchStartPos = null; let dx = x2 - x1, dy = y2 - y1;
-                let now = Date.now();
-                
-                if (now - lastTapTime < 300 && Math.sqrt(dx*dx + dy*dy) < 15) { 
-                    sendForcedCardSequential("Joker"); strokes = []; return; 
-                }
-                lastTapTime = now; if (Math.sqrt(dx*dx + dy*dy) < 30) return; 
-                
-                let W = window.innerWidth, H = window.innerHeight;
-                let avgX = (x1 + x2) / 2, avgY = (y1 + y2) / 2, edge, dir;
-                
-                if (Math.abs(dx) > Math.abs(dy)) {
-                    if (avgY < H / 2) { edge = 0; dir = dx > 0 ? 1 : -1; } else { edge = 2; dir = dx < 0 ? 1 : -1; }
-                } else {
-                    if (avgX >= W / 2) { edge = 1; dir = dy > 0 ? 1 : -1; } else { edge = 3; dir = dy < 0 ? 1 : -1; }
-                }
-                
-                if (strokes.length === 0) {
-                    strokes.push({ edge, dir });
-                    updateMasterIndicators();
-                    if (navigator.vibrate) navigator.vibrate(40);
-                } else {
-                    let s1 = strokes[0]; let s2 = { edge, dir }; strokes = []; 
-                    processSequentialStrokes(s1, s2);
-                }
-            });
-        }
+            let longPressTimer = null;
+            let isLongPressing = false;
+            let startPos = { x: 0, y: 0 };
+            let activeSuit = '';
+            let activeRank = '';
+            let lastTapTime = 0;
+            let lastTapQuadrant = '';
+            let fadeTimeout = null;
 
-        function processSequentialStrokes(s1, s2) {
-            let suitBase = 0;
-            if (s1.edge === 3) suitBase = 0; if (s1.edge === 0) suitBase = 13;  
-            if (s1.edge === 1) suitBase = 26; if (s1.edge === 2) suitBase = 39;  
-            let baseOffset = s1.dir === 1 ? 0 : 6; let finalIndex = 0;
-            if (s2.edge === s1.edge) { finalIndex = suitBase + 12; } else {
-                let diff = (s2.edge - s1.edge + 4) % 4; let stroke2Offset = (diff - 1) * 2 + (s2.dir === 1 ? 0 : 1);
-                finalIndex = suitBase + baseOffset + stroke2Offset;
+            // 中央即時顯影優化器（支援動態覆蓋）
+            function showCenterFeedback(text, shouldFade) {
+                if (fadeTimeout) clearTimeout(fadeTimeout);
+                
+                centerDisplay.innerText = text;
+                centerDisplay.style.opacity = "1";
+                centerDisplay.style.transform = "translate(-50%, -50%) scale(1.1)";
+                
+                // 智慧色彩分流
+                if (text.includes('♥') || text.includes('♦')) {
+                    centerDisplay.className = "absolute top-1/2 left-1/2 pointer-events-none z-20 text-7xl font-bold transition-all duration-150 text-red-500 select-none scale-110";
+                } else {
+                    centerDisplay.className = "absolute top-1/2 left-1/2 pointer-events-none z-20 text-7xl font-bold transition-all duration-150 text-zinc-100 select-none scale-110";
+                }
+
+                if (shouldFade) {
+                    setTimeout(() => { centerDisplay.style.transform = "translate(-50%, -50%) scale(1.0)"; }, 100);
+                    fadeTimeout = setTimeout(() => { centerDisplay.style.opacity = "0"; }, 2000);
+                }
             }
-            const ranks = ['2','3','4','5','6','7','8','9','10','J','Q','K','A']; const suits = ['♣','♦','♥','♠'];
-            sendForcedCardSequential(ranks[finalIndex % 13] + suits[Math.floor(finalIndex / 13)]);
+
+            // 空間象限精準劃分
+            function getQuadrantSuit(x, y) {
+                const W = window.innerWidth; const H = window.innerHeight;
+                if (x < W / 2) {
+                    return y < H / 2 ? '♣' : '♠';
+                } else {
+                    return y < H / 2 ? '♦' : '♥';
+                }
+            }
+
+            // ⚙️ 三角幾何向量時鐘映射引擎
+            function getRankFromVector(dx, dy) {
+                let angleRad = Math.atan2(-dy, dx); // 轉換為標準笛卡爾座標
+                let angleDeg = angleRad * (180 / Math.PI);
+                let clockDeg = 90 - angleDeg; // 將 12 點鐘（正上方）定義為 0 度
+                
+                if (clockDeg < 0) clockDeg += 360;
+                if (clockDeg >= 360) clockDeg -= 360;
+                
+                let hour = Math.round(clockDeg / 30);
+                if (hour === 0) hour = 12;
+                
+                const ranks = {
+                    1: 'A', 2: '2', 3: '3', 4: '4', 5: '5', 6: '6',
+                    7: '7', 8: '8', 9: '9', 10: '10', 11: 'J', 12: 'Q'
+                };
+                return ranks[hour] || '';
+            }
+
+            // 隱密頂部重置按鈕
+            const resetZone = document.getElementById('hidden-reset-zone');
+            let resetTimer = null;
+            resetZone.addEventListener('pointerdown', () => {
+                resetTimer = setTimeout(() => {
+                    resetSequentialSystem();
+                    showCenterFeedback("RESET", true);
+                }, 3000);
+            });
+            resetZone.addEventListener('pointerup', () => clearTimeout(resetTimer));
+            resetZone.addEventListener('pointerleave', () => clearTimeout(resetTimer));
+
+            // Pointer 核心接頭監聽
+            overlay.addEventListener('pointerdown', (e) => {
+                e.preventDefault();
+                const suit = getQuadrantSuit(e.clientX, e.clientY);
+                const now = Date.now();
+                
+                // ⚡ 雙擊觸發機制 -> 判定為 K
+                if (now - lastTapTime < 300 && lastTapQuadrant === suit) {
+                    clearTimeout(longPressTimer);
+                    isLongPressing = false;
+                    sendForcedCardSequential("K" + suit);
+                    showCenterFeedback(suit + "K", true);
+                    lastTapTime = 0;
+                    return;
+                }
+                
+                lastTapTime = now;
+                lastTapQuadrant = suit;
+                
+                startPos = { x: e.clientX, y: e.clientY };
+                activeSuit = suit;
+                activeRank = '';
+                isLongPressing = false;
+                
+                if (fadeTimeout) clearTimeout(fadeTimeout);
+                
+                // ⏳ 300 毫秒黃金長按判定
+                longPressTimer = setTimeout(() => {
+                    isLongPressing = true;
+                    if (navigator.vibrate) navigator.vibrate(35); // 輕微觸覺觸發反饋
+                    showCenterFeedback(activeSuit, false);
+                }, 300);
+            });
+
+            overlay.addEventListener('pointermove', (e) => {
+                if (!isLongPressing) {
+                    // 若在 300 毫秒內滑動過大，判定為無效抖動，取消長按
+                    let dx = e.clientX - startPos.x; let dy = e.clientY - startPos.y;
+                    if (Math.sqrt(dx*dx + dy*dy) > 15) clearTimeout(longPressTimer);
+                    return;
+                }
+                
+                let dx = e.clientX - startPos.x;
+                let dy = e.clientY - startPos.y;
+                let dist = Math.sqrt(dx*dx + dy*dy);
+                
+                if (dist > 25) { // 滑動半徑閾值
+                    activeRank = getRankFromVector(dx, dy);
+                    showCenterFeedback(activeSuit + activeRank, false);
+                } else {
+                    activeRank = '';
+                    showCenterFeedback(activeSuit, false);
+                }
+            });
+
+            const handlePointerUp = (e) => {
+                clearTimeout(longPressTimer);
+                if (isLongPressing) {
+                    if (activeRank) {
+                        sendForcedCardSequential(activeRank + activeSuit);
+                        showCenterFeedback(activeSuit + activeRank, true);
+                    } else {
+                        centerDisplay.style.opacity = "0";
+                    }
+                }
+                isLongPressing = false;
+            };
+
+            overlay.addEventListener('pointerup', handlePointerUp);
+            overlay.addEventListener('pointercancel', handlePointerUp);
         }
 
         function sendForcedCardSequential(cardName) {
@@ -241,11 +341,10 @@
             });
             currentTargetIndex++;
             updateMasterIndicators();
-            if (navigator.vibrate) navigator.vibrate([70, 40, 70]);
+            if (navigator.vibrate) navigator.vibrate([60, 30, 60]); // 成功發送雙震動
         }
 
         function resetSequentialSystem() {
-            strokes = [];
             currentTargetIndex = 1;
             db.ref(`rooms/${baseRoom}`).remove();
             updateMasterIndicators();
@@ -253,7 +352,7 @@
         }
 
         // ==========================================
-        // 【觀眾端】✨ 注入記憶與甦醒機制
+        // 【觀眾端】穩定對接不變
         // ==========================================
         let mindarThree = null; let cardMaterial = null; let cardPlane = null; let scene = null;
         let hasTriggered = false; let forcedCardName = null; let chosenFacingMode = 'environment';
@@ -275,10 +374,8 @@
             return originalGetUserMedia(constraints);
         };
 
-        // ✨ 智慧重連與甦醒監聽：處理休眠黑屏重啟後即時喚醒連線
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'visible' && baseRoom && myPlayerIndex) {
-                console.log("偵測到手機甦醒/切回網頁，自動強固 Firebase 資料綁定...");
                 startDatabaseListener();
             }
         });
@@ -287,27 +384,15 @@
             appContainer.innerHTML = `
                 <div id="splash-screen" class="fixed inset-0 w-screen h-screen bg-black flex flex-col justify-between items-center z-[99999] cursor-pointer py-24 px-8 select-none">
                     <div></div>
-                    
                     <div id="splash-text-container" class="text-center space-y-6 transition-all duration-500 ease-in-out">
                         <div class="space-y-2.5">
-                            <h1 class="text-zinc-200 text-xl sm:text-2xl font-light tracking-[0.4em] font-serif pr-[-0.4em]">
-                                記憶流痕
-                            </h1>
-                            <p class="text-zinc-500 text-[10px] sm:text-xs font-light tracking-[0.25em] uppercase font-mono">
-                                ─ The Frozen Proof ─
-                            </p>
+                            <h1 class="text-zinc-200 text-xl sm:text-2xl font-light tracking-[0.4em] font-serif pr-[-0.4em]">記憶流痕</h1>
+                            <p class="text-zinc-500 text-[10px] sm:text-xs font-light tracking-[0.25em] uppercase font-mono">─ The Frozen Proof ─</p>
                         </div>
-                        
-                        <p class="text-zinc-400 text-xs font-light tracking-[0.15em] leading-relaxed pt-2">
-                            魔術，讓我們連結了這一刻
-                        </p>
+                        <p class="text-zinc-400 text-xs font-light tracking-[0.15em] leading-relaxed pt-2">魔術，讓我們連結了這一刻</p>
                     </div>
-                    
-                    <div id="splash-action-hint" class="ghost-pulse text-zinc-600 text-[10px] tracking-[0.4em] uppercase font-light">
-                        ── 輕觸螢幕 ‧ 開始記錄 ──
-                    </div>
+                    <div id="splash-action-hint" class="ghost-pulse text-zinc-600 text-[10px] tracking-[0.4em] uppercase font-light">── 輕觸螢幕 ‧ 開始記錄 ──</div>
                 </div>
-                
                 <div id="robot-camera-view-container"></div>
                 <button id="camera-toggle-btn" class="fixed bottom-8 right-8 z-[99] bg-black/40 backdrop-blur-md border border-zinc-800/80 text-zinc-300 w-12 h-12 rounded-full shadow-2xl flex items-center justify-center text-lg active:scale-90 transition-all hidden">🔄</button>
                 <div id="countdown-overlay" class="fixed inset-0 z-50 flex items-center justify-center bg-black/10 pointer-events-none hidden">
@@ -323,35 +408,25 @@
                 const textContainer = document.getElementById('splash-text-container');
                 if (textContainer) {
                     textContainer.className = "text-center space-y-5 opacity-40 scale-95 transition-all duration-700";
-                    textContainer.innerHTML = `
-                        <p class="text-zinc-400 text-sm font-light tracking-[0.3em] animate-pulse">
-                            尋求你的見證.........
-                        </p>
-                    `;
+                    textContainer.innerHTML = `<p class="text-zinc-400 text-sm font-light tracking-[0.3em] animate-pulse">尋求你的見證.........</p>`;
                 }
                 
                 setTimeout(() => { startThreeCameraAR(); }, 200);
 
-                // ✨ 核心修復點：LocalStorage 靈魂防刷記憶機制
                 const savedRoom = localStorage.getItem('magic_frozen_room');
                 const savedIndex = localStorage.getItem('magic_frozen_index');
 
                 if (savedRoom === baseRoom && savedIndex) {
-                    // 如果這個房間此手機已經配發過號碼，直接繼承，絕不增加新號碼，免疫重新整理
                     myPlayerIndex = parseInt(savedIndex);
-                    console.log(`[記憶甦醒] 成功找回本機靈魂錨定軌跡，編號: ${myPlayerIndex}`);
                     if (isCameraReady) { startDatabaseListener(); }
                 } else {
-                    // 全新未造訪過的觀眾，才配發新號碼
                     db.ref(`rooms/${baseRoom}/nextIndex`).transaction((currentValue) => {
                         return (currentValue || 0) + 1;
                     }, (error, committed, snapshot) => {
                         if (committed) {
                             myPlayerIndex = snapshot.val(); 
-                            // 寫入本機硬件快取記憶
                             localStorage.setItem('magic_frozen_room', baseRoom);
                             localStorage.setItem('magic_frozen_index', myPlayerIndex);
-                            
                             if (isCameraReady) { startDatabaseListener(); }
                         }
                     });
@@ -363,7 +438,6 @@
             try {
                 const threeModule = await import("three"); window.THREE = threeModule; 
                 const mindarModule = await import("https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-three.prod.js");
-                
                 const container = document.getElementById('robot-camera-view-container');
                 
                 if (chosenFacingMode === 'user') {
@@ -397,7 +471,6 @@
 
                 await mindarThree.start();
                 isCameraReady = true;
-                
                 if (document.getElementById('splash-screen')) document.getElementById('splash-screen').remove();
                 
                 setupCameraToggleButton();
@@ -423,15 +496,11 @@
 
         function startDatabaseListener() {
             if (!baseRoom || !myPlayerIndex) return;
-
-            // 先行解除舊有監聽，避免重複綁定造成的記憶體殘留
             db.ref(`rooms/${baseRoom}/cards/${myPlayerIndex}`).off();
-
             db.ref(`rooms/${baseRoom}/cards/${myPlayerIndex}`).on('value', (snapshot) => {
                 const data = snapshot.val();
                 if (data && data.forcedCard) {
                     forcedCardName = data.forcedCard;
-                    console.log(`[同步成功] 已成功接收魔術師下達之指定撲克牌：${forcedCardName}`);
                     
                     if (userClickedReveal && !animationStarted) {
                         db.ref(`rooms/${baseRoom}/cards/${myPlayerIndex}`).off();
@@ -511,7 +580,6 @@
                 if (animationStarted) return;
                 
                 userClickedReveal = true; 
-                
                 if (forcedCardName) {
                     db.ref(`rooms/${baseRoom}/cards/${myPlayerIndex}`).off();
                     clickOverlay.remove();
@@ -564,7 +632,6 @@
 
         function bakeScreenToSaveableImage() {
             animationComplete = true; 
-            
             const video = document.querySelector('#robot-camera-view-container video');
             const webglCanvas = document.querySelector('#robot-camera-view-container canvas');
             if (!video || !webglCanvas) return;
@@ -598,7 +665,6 @@
             resultImg.src = dataUrl; resultImg.className = 'saveable-magic-photo';
             document.getElementById('app-container').appendChild(resultImg);
 
-            // ✨ 魔術完美結束，清除本機該房間之靈魂記憶，不影響下一次此房間的新表演
             localStorage.removeItem('magic_frozen_room');
             localStorage.removeItem('magic_frozen_index');
 
