@@ -136,7 +136,7 @@
         }
 
         // ==========================================
-        // 【魔術師端】✨ 支援單人/連線雙模主控 + 1.5s 鬼牌邏輯
+        // 【魔術師端】✨ 支援單人/連線雙模主控 + 智慧感知分流
         // ==========================================
         let currentTargetIndex = 1; 
         let globalTotalPlayers = 0; 
@@ -159,7 +159,7 @@
                 <div id="master-ui" class="fixed inset-0 w-screen h-screen flex flex-col items-center justify-center bg-black z-[99999] cursor-pointer">
                     <div class="flex flex-col items-center p-6">
                         <div id="qrcode" class="p-3 bg-black rounded-xl border border-zinc-900 shadow-2xl"></div>
-                        <p class="text-zinc-700 text-[10px] mt-8 tracking-widest animate-pulse">輕觸收起 QR Code 進入單人/主控畫面</p>
+                        <p class="text-zinc-700 text-[10px] mt-8 tracking-widest animate-pulse">輕觸收起 QR Code 進入選擇畫面</p>
                     </div>
                 </div>
                 
@@ -215,9 +215,9 @@
             const clockGuide = document.getElementById('clock-guide');
             
             let longPressTimer = null;
-            let jokerTimer = null;         // 🃏 鬼牌專用計時器
+            let jokerTimer = null;         
             let isLongPressing = false;
-            let isJokerActive = false;     // 🃏 鬼牌啟用標記
+            let isJokerActive = false;     
             let startPos = { x: 0, y: 0 };
             let activeSuit = '';
             let activeRank = '';
@@ -263,7 +263,6 @@
                 const suit = getQuadrantSuit(e.clientX, e.clientY);
                 const now = Date.now();
                 
-                // 雙擊判定為 K (同時清除鬼牌計時)
                 if (now - lastTapTime < 300 && lastTapQuadrant === suit) {
                     clearTimeout(longPressTimer);
                     clearTimeout(jokerTimer);
@@ -283,7 +282,6 @@
                 isLongPressing = false;
                 isJokerActive = false;
                 
-                // ⏳ 0.2 秒極速普通解鎖判定
                 longPressTimer = setTimeout(() => {
                     isLongPressing = true;
                     if (navigator.vibrate) navigator.vibrate(35);
@@ -294,11 +292,10 @@
                     }
                 }, 200);
 
-                // 🃏 1.5 秒原地絕對長按 Joker 判定
                 jokerTimer = setTimeout(() => {
                     isJokerActive = true;
-                    if (clockGuide) clockGuide.style.opacity = "0"; // 進入鬼牌模式，將引導圈收起保持純黑
-                    if (navigator.vibrate) navigator.vibrate([80, 40, 80]); // 特殊雙短震，盲操回饋已選中 Joker
+                    if (clockGuide) clockGuide.style.opacity = "0"; 
+                    if (navigator.vibrate) navigator.vibrate([80, 40, 80]); 
                 }, 1500);
             });
 
@@ -307,7 +304,6 @@
                 let dy = e.clientY - startPos.y;
                 let dist = Math.sqrt(dx*dx + dy*dy);
 
-                // 安全網：如果魔術師的手指移動超過 20 像素，代表正在進行滑動時鐘選牌，立即切斷 Joker 計時器防止誤觸
                 if (dist > 20 && !isJokerActive) {
                     clearTimeout(jokerTimer);
                 }
@@ -317,7 +313,6 @@
                     return;
                 }
                 
-                // 若已經成功鎖定 Joker，則凍結任何時鐘滑動運算
                 if (isJokerActive) return;
 
                 if (dist > 25) { 
@@ -329,11 +324,10 @@
 
             const handlePointerUp = (e) => {
                 clearTimeout(longPressTimer);
-                clearTimeout(jokerTimer); // 釋放時務必清除計時器
+                clearTimeout(jokerTimer); 
                 
                 if (clockGuide) clockGuide.style.opacity = "0";
 
-                // 核心控制點：不論按了 1.5 秒還是 10 秒，都必須等放開手指才觸發下一步
                 if (isJokerActive) {
                     handleCardSelectionComplete("Joker");
                     isJokerActive = false;
@@ -351,23 +345,30 @@
             overlay.addEventListener('pointercancel', handlePointerUp);
         }
 
+        // 🃏 核心智慧路由分流調整
         function handleCardSelectionComplete(cardName) {
-            // 同步 Firebase 備用
+            // 1. 同步寫入 Firebase 雲端資料庫
             db.ref(`rooms/${baseRoom}/cards/${currentTargetIndex}`).set({ 
                 forcedCard: cardName, 
                 timestamp: firebase.database.ServerValue.TIMESTAMP 
             });
             currentTargetIndex++;
             
-            // 直接注入本地，單人版本無縫對接
+            // 同時備份至本地變數
             forcedCardName = cardName; 
             
             if (navigator.vibrate) navigator.vibrate([60, 30, 60]); 
 
-            // 關閉輸入層，自動開啟相機與 AR 掃描
-            document.getElementById('stealth-curtain').classList.add('hidden');
-            injectCameraDOM();
-            startThreeCameraAR();
+            // 2. ✨ 智慧環境判定分流
+            if (globalTotalPlayers > 0) {
+                // 【連線模式】：有觀眾掃碼！魔術師手機留在此黑色操控畫面，僅重新整理底部灰點狀態
+                updateMasterIndicators();
+            } else {
+                // 【單人模式】：沒有任何觀眾！直接關閉控制板，無縫開啟本地相機與 AR 掃描
+                document.getElementById('stealth-curtain').classList.add('hidden');
+                injectCameraDOM();
+                startThreeCameraAR();
+            }
         }
 
         function resetSequentialSystem() {
@@ -378,7 +379,7 @@
         }
 
         // ==========================================
-        // 【AR 掃描 / 凍結快門 / 渲染保存】
+        // 【AR 鏡頭 / 凍結快門 / 渲染保存】
         // ==========================================
         let mindarThree = null; let cardMaterial = null; let cardPlane = null; let scene = null;
         let hasTriggered = false; let chosenFacingMode = 'environment';
